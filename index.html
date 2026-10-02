@@ -93,6 +93,9 @@
         <button id="themeBtn" class="w-9 h-9 flex items-center justify-center rounded-lg border border-c surface-2 hover:opacity-80 transition">
           <i data-lucide="moon" class="w-4 h-4"></i>
         </button>
+        <button id="changePasswordBtn" class="hidden items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80 transition">
+          <i data-lucide="key-round" class="w-4 h-4"></i> Change Password
+        </button>
         <button id="logoutBtn" class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80 transition text-rose-500">
           <i data-lucide="log-out" class="w-4 h-4"></i> Logout
         </button>
@@ -328,6 +331,36 @@
 </div>
 
 <!-- Toast -->
+<!-- ===================== CHANGE PASSWORD MODAL ===================== -->
+<div id="changePasswordModal" class="fixed inset-0 modal-backdrop hidden z-[70] flex items-center justify-center p-3">
+  <div class="surface rounded-xl w-full max-w-sm p-6 fade-in">
+    <div class="flex items-center justify-between mb-1">
+      <h3 class="font-bold text-base flex items-center gap-2"><i data-lucide="key-round" class="w-4 h-4"></i>Change Your Unit's Password</h3>
+      <button id="closeChangePassword" class="w-8 h-8 rounded-lg surface-2 border border-c flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+    <p class="text-dim text-xs mt-2 mb-4">This changes the login password shared by everyone in your unit — pick something every officer on your team can remember, and share it with them the same way you'd share any other access credential.</p>
+    <form id="changePasswordForm" class="space-y-3">
+      <div>
+        <label class="text-xs font-semibold text-dim">Current Password</label>
+        <input id="cpCurrent" type="password" required class="w-full mt-1 px-3 py-2 rounded-lg text-sm" />
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-dim">New Password</label>
+        <input id="cpNew" type="password" required minlength="6" class="w-full mt-1 px-3 py-2 rounded-lg text-sm" />
+        <p class="text-dim text-[11px] mt-1">At least 6 characters. A memorable passphrase (e.g. "ChittoorWarrants2026") is fine and stronger than it looks.</p>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-dim">Confirm New Password</label>
+        <input id="cpConfirm" type="password" required class="w-full mt-1 px-3 py-2 rounded-lg text-sm" />
+      </div>
+      <p id="cpError" class="text-rose-500 text-xs hidden flex items-center gap-1"><i data-lucide="alert-circle" class="w-3.5 h-3.5"></i><span></span></p>
+      <button type="submit" class="w-full py-2.5 rounded-lg text-sm font-semibold text-white flex items-center justify-center gap-2" style="background:var(--accent)">
+        <i data-lucide="check" class="w-4 h-4"></i> Update Password
+      </button>
+    </form>
+  </div>
+</div>
+
 <div id="toast" class="fixed bottom-5 right-5 z-[60] hidden"></div>
 
 <script>
@@ -562,7 +595,12 @@ async function seedDatabase(records, overwrite=false){
     const batch = db.batch();
     const chunk = records.slice(i, i+batchSize);
     chunk.forEach(rec => {
-      const docId = rec.cctnsId || rec.warrantNo || String(rec.slNo) || db.collection(COLLECTION_NAME).doc().id;
+      // slNo (the source row number) is guaranteed unique per warrant row.
+      // cctnsId/warrantNo are NOT reliably unique -- the same CCTNS ID or
+      // warrant number can legitimately cover multiple co-accused rows in
+      // one case, and keying docs on them silently collapsed ~900 distinct
+      // warrant rows into shared documents on the first seed.
+      const docId = rec.slNo != null ? ("w" + rec.slNo) : (db.collection(COLLECTION_NAME).doc().id);
       const ref = db.collection(COLLECTION_NAME).doc(String(docId));
       batch.set(ref, rec, { merge: !overwrite ? true : false });
       count++;
@@ -1157,7 +1195,64 @@ function renderSessionBadge(){
   // Only State HQ Admin can re-seed the statewide database.
   seedBtn.classList.toggle("hidden", !admin);
   seedBtn.classList.toggle("flex", admin);
+  // Changing a password only makes sense against a real Firebase Auth
+  // account -- Demo Mode's PINs live in the page source, not an account.
+  const cpBtn = document.getElementById("changePasswordBtn");
+  cpBtn.classList.toggle("hidden", DEMO_MODE);
+  cpBtn.classList.toggle("flex", !DEMO_MODE);
   lucide.createIcons();
+}
+
+function openChangePasswordModal(){
+  document.getElementById("changePasswordForm").reset();
+  document.getElementById("cpError").classList.add("hidden");
+  document.getElementById("changePasswordModal").classList.remove("hidden");
+  document.getElementById("changePasswordModal").classList.add("flex");
+}
+function closeChangePasswordModal(){
+  document.getElementById("changePasswordModal").classList.add("hidden");
+  document.getElementById("changePasswordModal").classList.remove("flex");
+}
+
+async function handleChangePassword(e){
+  e.preventDefault();
+  const current = document.getElementById("cpCurrent").value;
+  const next = document.getElementById("cpNew").value;
+  const confirm = document.getElementById("cpConfirm").value;
+  const errEl = document.getElementById("cpError");
+  const showError = (msg) => { errEl.classList.remove("hidden"); errEl.querySelector("span").textContent = msg; lucide.createIcons(); };
+
+  if (next.length < 6) { showError("New password must be at least 6 characters."); return; }
+  if (next !== confirm) { showError("New password and confirmation don't match."); return; }
+
+  const user = auth.currentUser;
+  if (!user) { showError("You're not signed in -- please log in again."); return; }
+
+  const submitBtn = document.querySelector('#changePasswordForm button[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Updating…`;
+  lucide.createIcons();
+  try {
+    // Firebase requires a recent sign-in before a sensitive change like a
+    // password update -- re-authenticate with the current password first.
+    const cred = firebase.auth.EmailAuthProvider.credential(user.email, current);
+    await user.reauthenticateWithCredential(cred);
+    await user.updatePassword(next);
+    closeChangePasswordModal();
+    toast("Password updated. Share the new password with your unit through your normal secure channel.");
+  } catch (err) {
+    console.error("Change password failed:", err);
+    const code = err && err.code;
+    const msg = (code === "auth/wrong-password" || code === "auth/invalid-credential") ? "Current password is incorrect."
+      : code === "auth/weak-password" ? "That password is too weak -- try a longer one."
+      : code === "auth/requires-recent-login" ? "Please log out and back in, then try again."
+      : "Failed to update password: " + (err && err.message ? err.message : "unknown error");
+    showError(msg);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> Update Password`;
+    lucide.createIcons();
+  }
 }
 
 function completeLogin(sessionData, officer){
@@ -1332,6 +1427,11 @@ function wireEvents(){
 
   document.getElementById("loginForm").addEventListener("submit", handleLoginSubmit);
   document.getElementById("logoutBtn").addEventListener("click", handleLogout);
+
+  document.getElementById("changePasswordBtn").addEventListener("click", openChangePasswordModal);
+  document.getElementById("closeChangePassword").addEventListener("click", closeChangePasswordModal);
+  document.getElementById("changePasswordForm").addEventListener("submit", handleChangePassword);
+  document.getElementById("changePasswordModal").addEventListener("click", (e) => { if (e.target.id === "changePasswordModal") closeChangePasswordModal(); });
 }
 
 /* ---------------------------------------------------------------------

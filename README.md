@@ -93,3 +93,9 @@ Login in this app has two modes:
 5. **Log in** on the login screen as usual — pick your unit, enter your officer name, and use the password from step 3 instead of a PIN. `index.html` auto-detects Live Mode from `firebaseConfig.apiKey` and switches the login flow (and the password-field label) accordingly; no further code changes are needed.
 
 Once Live Mode + real rules are in place, the "this is a client-side gate only" caveat in the rest of this README no longer applies.
+
+### Changing a unit's password
+
+The 16-character generated passwords from `create_officer_accounts.js` are secure but not meant to be memorized day-to-day. Once signed in, click **Change Password** in the header to set a memorable one for your unit (minimum 6 characters — a passphrase like `ChittoorWarrants2026` is fine). This changes the real Firebase Auth password for that unit's shared account; re-share the new password with your unit's officers the same way you shared the original one. "Username" (the login email, e.g. `chittoor@ap-warrants.local`) is fixed per unit by design, since that's what Firestore's rules match against — only the password is changeable.
+
+If a unit ever forgets its password entirely, re-run the provisioning script with `--reset-passwords` to generate (and print) a fresh one for every unit.
