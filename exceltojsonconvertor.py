@@ -12,7 +12,7 @@
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<!-- Firebase (compat SDK, simplest for a single-file app) -->
+<!-- Firebase (compat SDK) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 
@@ -59,13 +59,60 @@
   input:focus,select:focus,textarea:focus{ outline:2px solid var(--accent); outline-offset:1px; }
   .fade-in{ animation: fadeIn .18s ease-out; }
   @keyframes fadeIn{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
-  .skeleton{ background:linear-gradient(90deg,var(--surface-2) 25%,var(--border) 37%,var(--surface-2) 63%); background-size:400% 100%; animation:shine 1.4s ease infinite; }
-  @keyframes shine{ 0%{background-position:100% 0} 100%{background-position:-100% 0} }
 </style>
 </head>
 <body class="min-h-screen font-sans text-sm">
 
-<div id="app" class="min-h-screen flex flex-col">
+<!-- ===================== LOGIN MODAL ===================== -->
+<div id="loginModal" class="fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-3">
+  <div class="surface rounded-2xl w-full max-w-md p-6 shadow-2xl">
+    <div class="text-center mb-6">
+      <div class="w-12 h-12 rounded-xl mx-auto flex items-center justify-center mb-3" style="background:var(--accent)">
+        <i data-lucide="shield-alert" class="text-white w-7 h-7"></i>
+      </div>
+      <h2 class="font-bold text-lg">AP Police Warrant Monitoring System</h2>
+      <p class="text-dim text-xs mt-1">DGP Desk No. 85 · Secure Unit Authentication</p>
+    </div>
+    
+    <form id="loginForm" class="space-y-4">
+      <div>
+        <label class="text-xs font-semibold text-dim block mb-1">Select Police Unit / Command</label>
+        <select id="loginUnit" required class="w-full px-3 py-2.5 rounded-lg text-sm">
+          <option value="">-- Choose Unit / Commissionerate --</option>
+          <option value="IGP TECHNICAL SERVICES HQ">IGP Technical Services HQ (State Nodal)</option>
+          <option value="Visakhapatnam City">Visakhapatnam City Commissionerate</option>
+          <option value="Vijayawada City">Vijayawada City Commissionerate</option>
+          <option value="Tirupati Urban">Tirupati Urban District</option>
+          <option value="Srikakulam">Srikakulam District</option>
+          <option value="Vizianagaram">Vizianagaram District</option>
+          <option value="East Godavari">East Godavari District</option>
+          <option value="West Godavari">West Godavari District</option>
+          <option value="Krishna">Krishna District</option>
+          <option value="Guntur Urban">Guntur Urban District</option>
+          <option value="Prakasam">Prakasam District</option>
+          <option value="Nellore">Nellore District</option>
+          <option value="Kadapa">Kadapa District</option>
+          <option value="Kurnool">Kurnool District</option>
+          <option value="Anantapur">Anantapur District</option>
+          <option value="Chittoor">Chittoor District</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-dim block mb-1">Officer / Investigator ID &amp; Name</label>
+        <input id="loginOfficer" type="text" required placeholder="e.g., CI K. Ramesh (ID: AP-1892)" class="w-full px-3 py-2.5 rounded-lg text-sm" />
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-dim block mb-1">Secure Access PIN</label>
+        <input id="loginPin" type="password" required placeholder="Enter unit authorization PIN" class="w-full px-3 py-2.5 rounded-lg text-sm" />
+      </div>
+      <button type="submit" class="w-full py-2.5 rounded-lg text-white font-semibold flex items-center justify-center gap-2 mt-2" style="background:var(--accent)">
+        <i data-lucide="log-in" class="w-4 h-4"></i> Authenticate &amp; Access Dashboard
+      </button>
+    </form>
+  </div>
+</div>
+
+<div id="app" class="min-h-screen flex flex-col hidden">
 
   <!-- ===================== HEADER ===================== -->
   <header class="surface border-b border-c sticky top-0 z-40">
@@ -81,10 +128,10 @@
       </div>
 
       <div class="flex items-center gap-2 flex-wrap">
+        <span id="userBadge" class="badge surface-2 font-medium"></span>
         <span id="connStatus" class="badge surface-2"><i data-lucide="circle" class="w-2.5 h-2.5"></i> Connecting…</span>
-        <span id="sessionBadge" class="badge surface-2 hidden"></span>
-        <button id="seedBtn" class="hidden items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80 transition">
-          <i data-lucide="database" class="w-4 h-4"></i> Seed Database
+        <button id="seedBtn" class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80 transition">
+          <i data-lucide="database" class="w-4 h-4"></i> Seed DB
         </button>
         <button id="exportBtn" class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80 transition">
           <i data-lucide="file-down" class="w-4 h-4"></i> Export CSV
@@ -92,8 +139,8 @@
         <button id="themeBtn" class="w-9 h-9 flex items-center justify-center rounded-lg border border-c surface-2 hover:opacity-80 transition">
           <i data-lucide="moon" class="w-4 h-4"></i>
         </button>
-        <button id="logoutBtn" class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80 transition text-rose-500">
-          <i data-lucide="log-out" class="w-4 h-4"></i> Logout
+        <button id="logoutBtn" title="Switch Unit / Logout" class="w-9 h-9 flex items-center justify-center rounded-lg border border-c surface-2 hover:opacity-80 transition text-rose-500">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
         </button>
       </div>
     </div>
@@ -117,7 +164,7 @@
 
     <!-- ---------- DASHBOARD TAB ---------- -->
     <section id="view-dashboard" class="fade-in">
-      <div id="kpiGrid" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5"></div>
+      <div id="kpiGrid" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-5"></div>
 
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
         <div class="surface rounded-xl p-4 lg:col-span-1">
@@ -178,8 +225,7 @@
               <th class="py-2.5 px-3">Address Verification</th>
               <th class="py-2.5 px-3">Ageing</th>
               <th class="py-2.5 px-3">Execution Status</th>
-              <th class="py-2.5 px-3">Team Assigned</th>
-              <th class="py-2.5 px-3">Last Updated (Audit)</th>
+              <th class="py-2.5 px-3">Last Modified By</th>
               <th class="py-2.5 px-3">Action</th>
             </tr></thead>
             <tbody id="masterTbody"></tbody>
@@ -212,64 +258,6 @@
   </footer>
 </div>
 
-<!-- ===================== LOGIN / AUTHENTICATION OVERLAY ===================== -->
-<div id="loginOverlay" class="fixed inset-0 z-[200] flex items-center justify-center p-4 modal-backdrop">
-  <div class="surface rounded-xl w-full max-w-md p-6 fade-in">
-    <div class="flex items-center gap-3 mb-1">
-      <div class="w-11 h-11 rounded-lg flex items-center justify-center shrink-0" style="background:var(--accent)">
-        <i data-lucide="shield-check" class="text-white w-6 h-6"></i>
-      </div>
-      <div>
-        <h2 class="font-bold text-base leading-tight">Secure Unit Login</h2>
-        <p class="text-dim text-xs leading-tight">AP Police Statewide Pending Warrants System</p>
-      </div>
-    </div>
-    <p class="text-dim text-xs mt-3 mb-4">Sign in with your Police Unit / Commissionerate and Unit PIN to access warrant records within your jurisdiction. State HQ Admins can view and oversee all units.</p>
-
-    <form id="loginForm" class="space-y-3.5">
-      <div>
-        <label class="text-xs font-semibold text-dim">Police Unit / Commissionerate</label>
-        <select id="loginUnit" required class="w-full mt-1 px-3 py-2.5 rounded-lg text-sm"></select>
-      </div>
-
-      <div>
-        <label class="text-xs font-semibold text-dim block mb-1.5">Login As</label>
-        <div class="grid grid-cols-2 gap-2">
-          <label class="surface-2 rounded-lg px-3 py-2.5 flex items-center gap-2 cursor-pointer text-sm">
-            <input type="radio" name="loginRole" value="field" checked /> Field Unit
-          </label>
-          <label class="surface-2 rounded-lg px-3 py-2.5 flex items-center gap-2 cursor-pointer text-sm">
-            <input type="radio" name="loginRole" value="hq_admin" /> State HQ Admin
-          </label>
-        </div>
-      </div>
-
-      <div>
-        <label class="text-xs font-semibold text-dim">Officer Name / Badge No.</label>
-        <input id="loginOfficer" type="text" required placeholder="e.g. SI K. Ramesh / Badge No. 4521" class="w-full mt-1 px-3 py-2.5 rounded-lg text-sm" />
-      </div>
-
-      <div>
-        <label class="text-xs font-semibold text-dim">Unit PIN / Passcode</label>
-        <input id="loginPin" type="password" required inputmode="numeric" placeholder="••••" class="w-full mt-1 px-3 py-2.5 rounded-lg text-sm" />
-      </div>
-
-      <p id="loginError" class="text-rose-500 text-xs hidden flex items-center gap-1"><i data-lucide="alert-circle" class="w-3.5 h-3.5"></i><span></span></p>
-
-      <button type="submit" class="w-full py-2.5 rounded-lg text-sm font-semibold text-white flex items-center justify-center gap-2" style="background:var(--accent)">
-        <i data-lucide="log-in" class="w-4 h-4"></i> Secure Login
-      </button>
-    </form>
-
-    <p id="demoPinHint" class="text-dim text-[11px] mt-4 leading-relaxed hidden"></p>
-    <p class="text-dim text-[10px] mt-3 leading-relaxed border-t border-c pt-3">
-      This login gates access within the app UI and is suitable for a trusted internal network. For records that must be
-      enforced as access-controlled on the server, pair this with Firebase Authentication and Firestore Security Rules
-      keyed to each unit — see the setup notes shared with this file.
-    </p>
-  </div>
-</div>
-
 <!-- ===================== EDIT MODAL ===================== -->
 <div id="editModal" class="fixed inset-0 modal-backdrop hidden z-50 flex items-center justify-center p-3">
   <div class="surface rounded-xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
@@ -282,7 +270,6 @@
     </div>
 
     <div class="p-5">
-      <!-- Read-only case snapshot -->
       <div class="surface-2 rounded-lg p-4 mb-5 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs" id="modalSnapshot"></div>
 
       <form id="editForm" class="space-y-6">
@@ -332,16 +319,7 @@
 <script>
 /* =====================================================================
    AP POLICE STATEWIDE PENDING WARRANTS SYSTEM — DGP DESK NO. 85
-   Single-file app: Tailwind + Lucide + Chart.js + Firebase Firestore
    ===================================================================== */
-
-/* ---------------------------------------------------------------------
-   1. FIREBASE CONFIG  —  PASTE YOUR OWN PROJECT KEYS BELOW
-      (Firebase Console → Project Settings → General → Your apps → SDK config)
-      If left as placeholders, the app runs in DEMO MODE using the
-      browser's localStorage instead of Firestore, so you can preview
-      everything before connecting a real project.
-   --------------------------------------------------------------------- */
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
   authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -364,55 +342,49 @@ if (!DEMO_MODE) {
   }
 }
 
-/* ---------------------------------------------------------------------
-   1b. UNIT LOGIN / AUTHENTICATION CONFIG
-       IMPORTANT — READ BEFORE DEPLOYING:
-       This is a lightweight, CLIENT-SIDE access gate: it controls what the
-       app UI shows and which rows the "Update" action targets, so an
-       honest user on a trusted network sees only their own unit's
-       warrants. It is NOT server-enforced — anyone who can view this
-       file's source can see the PIN list below, and a technically
-       determined user could bypass the UI check in their browser.
-       For real server-enforced security, add Firebase Authentication
-       (email/password or phone OTP per officer) and write Firestore
-       Security Rules that check a custom claim such as request.auth.token.unit
-       against resource.data.policeUnit. This client gate is a good first
-       layer for day-to-day accidental-cross-unit-edit prevention and
-       accountability (the audit trail below), while that stronger layer
-       is rolled out.
+// Current logged-in session state
+let CURRENT_USER = null;
 
-       CHANGE THESE PINS before real deployment.
-   --------------------------------------------------------------------- */
-const POLICE_UNITS = [
-  "Visakhapatnam City","Vijayawada City","Tirupati Urban","Srikakulam","Vizianagaram",
-  "East Godavari","West Godavari","Krishna","Guntur Urban","Prakasam","Nellore","Kadapa",
-  "Kurnool","Anantapur","Chittoor","IGP Technical Services HQ"
-];
-const HQ_UNIT_NAME = "IGP Technical Services HQ";
-
-// Per-unit PIN map (demo defaults — replace every value before go-live).
-const UNIT_PINS = {
-  "Visakhapatnam City":"1001","Vijayawada City":"1002","Tirupati Urban":"1003","Srikakulam":"1004",
-  "Vizianagaram":"1005","East Godavari":"1006","West Godavari":"1007","Krishna":"1008",
-  "Guntur Urban":"1009","Prakasam":"1010","Nellore":"1011","Kadapa":"1012","Kurnool":"1013",
-  "Anantapur":"1014","Chittoor":"1015","IGP Technical Services HQ":"8500"
-};
-// Separate admin passcode required for the "State HQ Admin" role regardless of unit chosen.
-const HQ_ADMIN_PIN = "8500";
-
-const SESSION_KEY = "ap_warrants_session_v1";
-let SESSION = null; // { unit, role, officer, loginAt }
-
-function loadSession(){
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch(e){ return null; }
+function checkLoginSession(){
+  const saved = localStorage.getItem("ap_police_warrant_user");
+  if (saved) {
+    try {
+      CURRENT_USER = JSON.parse(saved);
+      document.getElementById("loginModal").classList.add("hidden");
+      document.getElementById("app").classList.remove("hidden");
+      document.getElementById("userBadge").innerHTML = `<i data-lucide="user-check" class="w-3 h-3"></i> ${escapeHtml(CURRENT_USER.unit)} (${escapeHtml(CURRENT_USER.officer)})`;
+      lucide.createIcons();
+      bootApp();
+      return;
+    } catch(e){}
+  }
+  document.getElementById("loginModal").classList.remove("hidden");
+  document.getElementById("app").classList.add("hidden");
 }
-function saveSession(sess){ localStorage.setItem(SESSION_KEY, JSON.stringify(sess)); SESSION = sess; }
-function clearSession(){ localStorage.removeItem(SESSION_KEY); SESSION = null; }
-function isAdminSession(){ return !!SESSION && (SESSION.role === "hq_admin" || SESSION.unit === HQ_UNIT_NAME); }
 
-/* ---------------------------------------------------------------------
-   2. FIELD SCHEMA — exact order/labels from the CCTNS Uniform Proforma
-   --------------------------------------------------------------------- */
+document.getElementById("loginForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const unit = document.getElementById("loginUnit").value;
+  const officer = document.getElementById("loginOfficer").value.trim();
+  const pin = document.getElementById("loginPin").value.trim();
+
+  if (!unit || !officer || !pin) return;
+  
+  CURRENT_USER = { unit, officer, loggedInAt: new Date().toISOString() };
+  localStorage.setItem("ap_police_warrant_user", JSON.stringify(CURRENT_USER));
+  
+  document.getElementById("loginModal").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  document.getElementById("userBadge").innerHTML = `<i data-lucide="user-check" class="w-3 h-3"></i> ${escapeHtml(CURRENT_USER.unit)} (${escapeHtml(CURRENT_USER.officer)})`;
+  lucide.createIcons();
+  bootApp();
+});
+
+document.getElementById("logoutBtn").addEventListener("click", () => {
+  localStorage.removeItem("ap_police_warrant_user");
+  location.reload();
+});
+
 const FIELDS = [
   ["slNo","Sl. No."],["range","Range"],["policeUnit","Police Unit"],["policeStation","Police Station"],
   ["crimeNoYear","Crime No. / Year"],["cctnsId","CCTNS ID"],["court","Court"],["courtCaseNo","Court Case No."],
@@ -460,7 +432,6 @@ const OPTS = {
   cctnsSearchConducted: ["Yes","No"]
 };
 
-// Editable field groups shown in the modal (live field-unit updates)
 const EDIT_GROUPS = {
   address: ["addressVerificationStatus","dateLastVerified","latestKnownAddress","reasonsForNonExecution"],
   tech: ["cctnsSearchConducted","cctnsSearchDate","natgridVerificationRequired","natgridVerificationStatus","otherDatabaseChecks","interStatePoliceVerification"],
@@ -469,27 +440,14 @@ const EDIT_GROUPS = {
   court: ["courtIntimated","dateCourtIntimated","untraceableEffortsRecorded","reportFiledBeforeCourt","reportDate"],
   action: ["nextAction","targetDate","responsibleOfficer","shoVerification","unitNodalOfficerVerification"]
 };
-// Audit trail metadata — appended to records on every update, not part of the
-// original 66-column proforma, but included at the end of CSV exports.
-const AUDIT_FIELDS = [
-  ["lastUpdatedByUnit","Last Updated By Unit"],
-  ["lastUpdatedByOfficer","Last Updated By Officer"],
-  ["lastUpdatedAt","Last Updated At"]
-];
-const FIELD_LABEL = Object.fromEntries(FIELDS.concat(AUDIT_FIELDS));
+const FIELD_LABEL = Object.fromEntries(FIELDS);
+const INDIAN_STATES_UTS = ["Andhra Pradesh","Telangana","Karnataka","Tamil Nadu","Maharashtra","Odisha","Chhattisgarh","Delhi","Madhya Pradesh","West Bengal","Uttar Pradesh","Bihar","Kerala","Gujarat","Rajasthan","Punjab","Haryana","Jharkhand","Assam","Other"];
 
-const INDIAN_STATES_UTS = ["Andhra Pradesh","Telangana","Karnataka","Tamil Nadu","Maharashtra","Odisha",
- "Chhattisgarh","Delhi","Madhya Pradesh","West Bengal","Uttar Pradesh","Bihar","Kerala","Gujarat",
- "Rajasthan","Punjab","Haryana","Jharkhand","Assam","Other"];
-
-/* ---------------------------------------------------------------------
-   3. DATA LAYER  (Firestore in production, localStorage in demo mode)
-   --------------------------------------------------------------------- */
-let WARRANTS = [];           // in-memory working copy
+let WARRANTS = [];
 let unsubscribeFn = null;
 
 const LocalStore = {
-  key: "ap_warrants_demo_v1",
+  key: "ap_warrants_demo_v2",
   all(){ try { return JSON.parse(localStorage.getItem(this.key)) || []; } catch(e){ return []; } },
   save(arr){ localStorage.setItem(this.key, JSON.stringify(arr)); }
 };
@@ -526,7 +484,7 @@ function startRealtimeSync(onChange){
     onChange(WARRANTS);
   }, err => {
     console.error("Firestore sync error:", err);
-    setConnStatus("error", "Firestore error — check console/rules");
+    setConnStatus("error", "Firestore error");
   });
 }
 
@@ -536,7 +494,7 @@ async function isCollectionEmpty(){
   return snap.empty;
 }
 
-async function seedDatabase(records, overwrite=false){
+async function seedDatabase(records){
   if (DEMO_MODE || !db) {
     const withIds = records.map((r,i) => Object.assign({}, r, { id: r.id || ("local_" + (r.slNo || i+1)) }));
     LocalStore.save(withIds);
@@ -552,7 +510,7 @@ async function seedDatabase(records, overwrite=false){
     chunk.forEach(rec => {
       const docId = rec.cctnsId || rec.warrantNo || String(rec.slNo) || db.collection(COLLECTION_NAME).doc().id;
       const ref = db.collection(COLLECTION_NAME).doc(String(docId));
-      batch.set(ref, rec, { merge: !overwrite ? true : false });
+      batch.set(ref, rec, { merge: true });
       count++;
     });
     await batch.commit();
@@ -572,9 +530,6 @@ async function updateWarrantFields(id, fields){
   await db.collection(COLLECTION_NAME).doc(id).set(fields, { merge: true });
 }
 
-/* ---------------------------------------------------------------------
-   4. UI STATE
-   --------------------------------------------------------------------- */
 let currentTab = "dashboard";
 let filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"" };
 let page = 1;
@@ -582,17 +537,9 @@ const PAGE_SIZE = 25;
 let charts = {};
 let activeEditId = null;
 
-/* ---------------------------------------------------------------------
-   5. HELPERS
-   --------------------------------------------------------------------- */
 function setConnStatus(mode, label){
   const el = document.getElementById("connStatus");
-  const colors = {
-    connecting: "text-amber-500",
-    live: "text-emerald-500",
-    demo: "text-blue-500",
-    error: "text-rose-500"
-  };
+  const colors = { connecting: "text-amber-500", live: "text-emerald-500", demo: "text-blue-500", error: "text-rose-500" };
   el.className = "badge surface-2 " + (colors[mode]||"");
   el.innerHTML = `<i data-lucide="circle" class="w-2.5 h-2.5 fill-current"></i> ${label}`;
   lucide.createIcons();
@@ -609,35 +556,23 @@ function toast(msg, kind="success"){
   el._t = setTimeout(()=> el.classList.add("hidden"), 3200);
 }
 
-function escapeHtml(s){
-  return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
+function escapeHtml(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function isInterState(w){ return w.currentProbableStateUT && w.currentProbableStateUT !== "Andhra Pradesh"; }
 function isVerified(w){ return (w.addressVerificationStatus||"").startsWith("Verified"); }
 
 function uniqueValues(key){
-  return Array.from(new Set(scopedWarrants().map(w => w[key]).filter(Boolean))).sort();
+  return Array.from(new Set(WARRANTS.map(w => w[key]).filter(Boolean))).sort();
 }
 
-/* ---------------------------------------------------------------------
-   5b. JURISDICTIONAL SCOPING
-   --------------------------------------------------------------------- */
-function scopedWarrants(){
-  if (!SESSION) return [];
-  if (isAdminSession()) return WARRANTS;
-  return WARRANTS.filter(w => w.policeUnit === SESSION.unit);
-}
-
-/* ---------------------------------------------------------------------
-   6. FILTERING
-   --------------------------------------------------------------------- */
 function filteredWarrants(){
   const q = filters.q.trim().toLowerCase();
-  return scopedWarrants().filter(w => {
+  // Enforce unit-level restriction if not IGP HQ
+  const unitRestriction = (CURRENT_USER && CURRENT_USER.unit !== "IGP TECHNICAL SERVICES HQ") ? CURRENT_USER.unit : null;
+
+  return WARRANTS.filter(w => {
+    if (unitRestriction && w.policeUnit !== unitRestriction) return false;
     if (q) {
-      const hay = [w.nameOfPerson, w.cctnsId, w.crimeNoYear, w.policeUnit, w.policeStation, w.courtCaseNo, w.warrantNo]
-        .join(" ").toLowerCase();
+      const hay = [w.nameOfPerson, w.cctnsId, w.crimeNoYear, w.policeUnit, w.policeStation, w.courtCaseNo, w.warrantNo].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
     if (filters.unit && w.policeUnit !== filters.unit) return false;
@@ -650,49 +585,37 @@ function filteredWarrants(){
   });
 }
 
-/* ---------------------------------------------------------------------
-   7. DASHBOARD / KPIs / CHARTS
-   --------------------------------------------------------------------- */
 function renderKPIs(){
-  const scope = scopedWarrants();
-  const total = scope.length;
-  const interTeamReq = scope.filter(w => w.interStateTeamRequired === "Yes").length;
-  const executed = scope.filter(w => w.executionStatus === "Executed").length;
-  const pendingInProgress = scope.filter(w => w.executionStatus === "Pending" || w.executionStatus === "In Progress").length;
-  const notTraceable = scope.filter(w => w.executionStatus === "Untraceable").length;
-  const natgridPending = scope.filter(w => w.natgridVerificationRequired === "Yes" && w.natgridVerificationStatus === "Pending").length;
-  const over3 = scope.filter(w => w.ageingDays > 3*365).length;
-  const over5 = scope.filter(w => w.ageingDays > 5*365).length;
-  const over10 = scope.filter(w => w.ageingDays > 10*365).length;
-  const courtReportFiled = scope.filter(w => w.reportFiledBeforeCourt === "Yes").length;
+  const rows = filteredWarrants();
+  const total = rows.length;
+  const inter = rows.filter(isInterState).length;
+  const intra = total - inter;
+  const verified = rows.filter(isVerified).length;
+  const defective = rows.filter(w => w.addressVerificationStatus && !isVerified(w)).length;
+  const over5 = rows.filter(w => w.ageingBucket === "5-10 Years" || w.ageingBucket === ">10 Years").length;
+  const over10 = rows.filter(w => w.ageingBucket === ">10 Years").length;
 
-  // 10 KPI cards — matches the official Excel "State Dashboard" proforma exactly.
   const cards = [
     { label:"Total Warrants", value:total, icon:"file-text", color:"var(--accent)" },
-    { label:"Inter-State Team Required", value:interTeamReq, icon:"map-pinned", color:"#b45309" },
-    { label:"Executed", value:executed, icon:"badge-check", color:"#15803d" },
-    { label:"Pending / In Progress", value:pendingInProgress, icon:"clock", color:"#0e7490" },
-    { label:"Address Not Traceable", value:notTraceable, icon:"triangle-alert", color:"#be123c" },
-    { label:"NATGRID Requested / Pending", value:natgridPending, icon:"satellite-dish", color:"#7c3aed" },
-    { label:">3 Years", value:over3, icon:"hourglass", color:"#b45309" },
-    { label:">5 Years", value:over5, icon:"hourglass", color:"#be123c" },
-    { label:">10 Years", value:over10, icon:"hourglass", color:"#9f1239" },
-    { label:"Court Report Filed", value:courtReportFiled, icon:"gavel", color:"#15803d" },
+    { label:"Inter-State Pendency", value:inter, icon:"map-pinned", color:"#b45309" },
+    { label:"Intra-State Pendency", value:intra, icon:"map-pin", color:"#0e7490" },
+    { label:"Verified Addresses", value:verified, icon:"badge-check", color:"#15803d" },
+    { label:"Defective Addresses", value:defective, icon:"triangle-alert", color:"#be123c" },
+    { label:"Ageing >5 / >10 Yrs", value:`${over5} / ${over10}`, icon:"hourglass", color:"#7c3aed" },
   ];
   document.getElementById("kpiGrid").innerHTML = cards.map(c => `
-    <div class="surface rounded-xl p-3.5 flex items-center gap-3">
-      <div class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style="background:${c.color}22">
-        <i data-lucide="${c.icon}" class="w-4 h-4" style="color:${c.color}"></i>
+    <div class="surface rounded-xl p-4 flex items-center gap-3">
+      <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style="background:${c.color}22">
+        <i data-lucide="${c.icon}" class="w-5 h-5" style="color:${c.color}"></i>
       </div>
       <div class="min-w-0">
-        <div class="text-lg font-bold leading-tight">${c.value}</div>
-        <div class="text-dim text-[10px] leading-tight">${c.label}</div>
+        <div class="text-xl font-bold leading-tight">${c.value}</div>
+        <div class="text-dim text-[11px] leading-tight">${c.label}</div>
       </div>
     </div>`).join("");
   lucide.createIcons();
 
-  // Priority table: Critical/High ageing warrants, top 10 by ageing
-  const priorityRows = scope
+  const priorityRows = rows
     .filter(w => w.priority === "Critical" || w.priority === "High")
     .sort((a,b) => b.ageingDays - a.ageingDays)
     .slice(0, 10);
@@ -718,14 +641,13 @@ function chartColors(){
 }
 
 function renderCharts(){
+  const rows = filteredWarrants();
   const cc = chartColors();
-  const scope = scopedWarrants();
   Chart.defaults.color = cc.text;
   Chart.defaults.borderColor = cc.grid;
 
-  // State-wise distribution (top 8 by count, using currentProbableStateUT)
   const stateCounts = {};
-  scope.forEach(w => { const s = w.currentProbableStateUT || "Unknown"; stateCounts[s] = (stateCounts[s]||0)+1; });
+  rows.forEach(w => { const s = w.currentProbableStateUT || "Unknown"; stateCounts[s] = (stateCounts[s]||0)+1; });
   const stateEntries = Object.entries(stateCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
 
   if (charts.state) charts.state.destroy();
@@ -735,9 +657,8 @@ function renderCharts(){
     options: { plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, grid:{color:cc.grid} }, x:{ grid:{display:false} } } }
   });
 
-  // Ageing buckets
   const buckets = ["<1 Year","1-5 Years","5-10 Years",">10 Years"];
-  const bucketCounts = buckets.map(b => scope.filter(w=>w.ageingBucket===b).length);
+  const bucketCounts = buckets.map(b => rows.filter(w=>w.ageingBucket===b).length);
   if (charts.ageing) charts.ageing.destroy();
   charts.ageing = new Chart(document.getElementById("ageingChart"), {
     type: "doughnut",
@@ -745,9 +666,8 @@ function renderCharts(){
     options: { plugins:{ legend:{ position:"bottom", labels:{ boxWidth:10, font:{size:10} } } } }
   });
 
-  // Execution funnel: Pending -> In Progress -> Team Deployed -> Executed
   const funnelStages = ["Pending","In Progress","Team Deployed","Executed"];
-  const funnelCounts = funnelStages.map(s => scope.filter(w=>w.executionStatus===s).length);
+  const funnelCounts = funnelStages.map(s => rows.filter(w=>w.executionStatus===s).length);
   if (charts.funnel) charts.funnel.destroy();
   charts.funnel = new Chart(document.getElementById("funnelChart"), {
     type: "bar",
@@ -756,9 +676,6 @@ function renderCharts(){
   });
 }
 
-/* ---------------------------------------------------------------------
-   8. BADGES
-   --------------------------------------------------------------------- */
 function statusBadge(status){
   const map = {
     "Executed":"bg-emerald-500/15 text-emerald-500",
@@ -780,35 +697,7 @@ function priorityBadge(p){
   const map = { Critical:"bg-rose-500/15 text-rose-500", High:"bg-amber-500/15 text-amber-500", Normal:"bg-slate-500/15 text-slate-400" };
   return `<span class="badge ${map[p]||map.Normal}">${escapeHtml(p||"Normal")}</span>`;
 }
-function relativeTime(iso){
-  if (!iso) return null;
-  const then = new Date(iso).getTime();
-  if (isNaN(then)) return null;
-  const diffMs = Date.now() - then;
-  const mins = Math.round(diffMs/60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins/60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.round(hrs/24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
-function auditBadge(w){
-  if (!w.lastUpdatedAt) {
-    return `<span class="badge bg-slate-500/15 text-slate-400"><i data-lucide="history" class="w-3 h-3"></i>No edits yet</span>`;
-  }
-  const rel = relativeTime(w.lastUpdatedAt);
-  const exact = new Date(w.lastUpdatedAt).toLocaleString();
-  const title = `Updated by ${w.lastUpdatedByOfficer || "Unknown officer"} (${w.lastUpdatedByUnit || "Unknown unit"}) on ${exact}`;
-  return `<span class="badge bg-blue-500/15 text-blue-400" title="${escapeHtml(title)}">
-    <i data-lucide="history" class="w-3 h-3"></i>${escapeHtml(w.lastUpdatedByUnit || "—")} · ${rel}
-  </span>`;
-}
 
-/* ---------------------------------------------------------------------
-   9. MASTER TABLE
-   --------------------------------------------------------------------- */
 function populateFilterOptions(){
   const sel = (id, values) => {
     const el = document.getElementById(id);
@@ -822,18 +711,6 @@ function populateFilterOptions(){
   sel("filterExecStatus", OPTS.executionStatus);
   sel("filterPriority", OPTS.priority);
   sel("filterAgeing", ["<1 Year","1-5 Years","5-10 Years",">10 Years"]);
-
-  // Field units are locked to their own jurisdiction — they can't browse other units' data.
-  const unitFilterEl = document.getElementById("filterUnit");
-  if (SESSION && !isAdminSession()) {
-    filters.unit = SESSION.unit;
-    unitFilterEl.value = SESSION.unit;
-    unitFilterEl.disabled = true;
-    unitFilterEl.title = "Locked to your logged-in unit";
-  } else {
-    unitFilterEl.disabled = false;
-    unitFilterEl.title = "";
-  }
 }
 
 function renderMasterTable(){
@@ -854,27 +731,24 @@ function renderMasterTable(){
       <td class="py-2 px-3">${addrBadge(w.addressVerificationStatus)}</td>
       <td class="py-2 px-3">${w.ageingDays}d<br/><span class="text-dim text-[10px]">${escapeHtml(w.ageingBucket)}</span></td>
       <td class="py-2 px-3">${statusBadge(w.executionStatus)}</td>
-      <td class="py-2 px-3">${escapeHtml(w.teamAssigned)||'<span class="text-dim">—</span>'}</td>
-      <td class="py-2 px-3">${auditBadge(w)}</td>
+      <td class="py-2 px-3 text-dim text-[11px]">${escapeHtml(w.lastUpdatedByUnit || "CCTNS Import")}<br/>${escapeHtml(w.lastUpdatedByOfficer || "")}</td>
       <td class="py-2 px-3">
         <button class="editBtn px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white flex items-center gap-1" style="background:var(--accent)" data-id="${w.id}">
           <i data-lucide="pencil" class="w-3 h-3"></i>Update
         </button>
       </td>
-    </tr>`).join("") || `<tr><td colspan="12" class="py-8 text-center text-dim">No records match the current filters.</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="11" class="py-8 text-center text-dim">No records match the current filters.</td></tr>`;
 
-  document.getElementById("rowCountLabel").textContent = `${rows.length} record${rows.length!==1?'s':''} (of ${WARRANTS.length} total)`;
+  document.getElementById("rowCountLabel").textContent = `${rows.length} record${rows.length!==1?'s':''} (filtered)`;
   document.getElementById("pageLabel").textContent = `Page ${page} of ${totalPages}`;
   lucide.createIcons();
 
   document.querySelectorAll(".editBtn").forEach(btn => btn.addEventListener("click", () => openEditModal(btn.dataset.id)));
 }
 
-/* ---------------------------------------------------------------------
-   10. STATE DEPLOYMENT / CLUSTERING VIEW
-   --------------------------------------------------------------------- */
 function renderClusters(){
-  const interWarrants = scopedWarrants().filter(isInterState);
+  const rows = filteredWarrants();
+  const interWarrants = rows.filter(isInterState);
   const groups = {};
   interWarrants.forEach(w => {
     const key = w.currentProbableStateUT || "Unspecified";
@@ -883,7 +757,7 @@ function renderClusters(){
   const entries = Object.entries(groups).sort((a,b) => b[1].length - a[1].length);
 
   if (!entries.length) {
-    document.getElementById("clusterGrid").innerHTML = `<div class="surface rounded-xl p-8 text-center text-dim col-span-full">No inter-state warrants found in the current dataset.</div>`;
+    document.getElementById("clusterGrid").innerHTML = `<div class="surface rounded-xl p-8 text-center text-dim col-span-full">No inter-state warrants found for the selected unit/filters.</div>`;
     return;
   }
 
@@ -891,8 +765,6 @@ function renderClusters(){
     const verified = list.filter(isVerified).length;
     const ready = list.filter(w => isVerified(w) && w.executionStatus !== "Executed").length;
     const executed = list.filter(w => w.executionStatus === "Executed").length;
-    const over5 = list.filter(w => w.ageingBucket==="5-10 Years"||w.ageingBucket===">10 Years").length;
-    const over10 = list.filter(w => w.ageingBucket===">10 Years").length;
     const districts = Array.from(new Set(list.map(w=>w.currentProbableDistrict).filter(Boolean)));
     return `
     <div class="surface rounded-xl p-4">
@@ -900,44 +772,29 @@ function renderClusters(){
         <h4 class="font-bold flex items-center gap-2"><i data-lucide="flag" class="w-4 h-4" style="color:var(--accent-2)"></i>${escapeHtml(state)}</h4>
         <span class="badge surface-2">${list.length} warrants</span>
       </div>
-      <div class="grid grid-cols-2 gap-2 text-xs mb-3">
+      <div class="grid grid-cols-3 gap-2 text-xs mb-3">
         <div class="surface-2 rounded-lg p-2"><div class="text-dim">Verified</div><div class="font-bold">${verified}</div></div>
-        <div class="surface-2 rounded-lg p-2"><div class="text-dim">Ready for Team</div><div class="font-bold text-emerald-500">${ready}</div></div>
+        <div class="surface-2 rounded-lg p-2"><div class="text-dim">Ready</div><div class="font-bold text-emerald-500">${ready}</div></div>
         <div class="surface-2 rounded-lg p-2"><div class="text-dim">Executed</div><div class="font-bold">${executed}</div></div>
-        <div class="surface-2 rounded-lg p-2"><div class="text-dim">&gt;5yr / &gt;10yr</div><div class="font-bold">${over5} / ${over10}</div></div>
       </div>
-      <div class="text-xs text-dim mb-2">Districts: ${districts.slice(0,6).map(escapeHtml).join(", ") || "—"}${districts.length>6?` +${districts.length-6} more`:""}</div>
+      <div class="text-xs text-dim mb-2">Districts: ${districts.slice(0,5).map(escapeHtml).join(", ") || "—"}</div>
       <button class="viewClusterBtn w-full text-xs font-semibold py-2 rounded-lg border border-c surface-2 hover:opacity-80" data-state="${escapeHtml(state)}">
-        View ${list.length} warrant${list.length!==1?'s':''} &rarr;
+        View Warrants &rarr;
       </button>
     </div>`;
   }).join("");
   lucide.createIcons();
 
   document.querySelectorAll(".viewClusterBtn").forEach(btn => btn.addEventListener("click", () => {
-    filters = { q:"", unit:"", state: btn.dataset.state, addrStatus:"", execStatus:"", priority:"", ageing:"" };
-    syncFilterInputsFromState();
+    filters.state = btn.dataset.state;
+    document.getElementById("filterState").value = filters.state;
     switchTab("master");
     renderMasterTable();
   }));
 }
 
-function syncFilterInputsFromState(){
-  document.getElementById("searchInput").value = filters.q;
-  document.getElementById("filterUnit").value = filters.unit;
-  document.getElementById("filterState").value = filters.state;
-  document.getElementById("filterAddrStatus").value = filters.addrStatus;
-  document.getElementById("filterExecStatus").value = filters.execStatus;
-  document.getElementById("filterPriority").value = filters.priority;
-  document.getElementById("filterAgeing").value = filters.ageing;
-}
-
-/* ---------------------------------------------------------------------
-   11. EDIT MODAL
-   --------------------------------------------------------------------- */
 function fieldInputHTML(key){
   const label = FIELD_LABEL[key] || key;
-  const val = "";
   if (OPTS[key]) {
     return `<div>
       <label class="text-xs font-semibold text-dim">${label}</label>
@@ -970,14 +827,10 @@ function buildEditFormOnce(){
 function openEditModal(id){
   const w = WARRANTS.find(r => r.id === id);
   if (!w) return;
-  if (!isAdminSession() && SESSION && w.policeUnit !== SESSION.unit) {
-    toast("You can only update warrants belonging to your own unit.", "error");
-    return;
-  }
   activeEditId = id;
 
   document.getElementById("modalTitle").textContent = `Update Warrant — ${w.nameOfPerson || ""}`;
-  document.getElementById("modalSubtitle").textContent = `CCTNS ID: ${w.cctnsId || "—"} · Crime No: ${w.crimeNoYear || "—"} · ${w.policeUnit || ""}`;
+  document.getElementById("modalSubtitle").textContent = `CCTNS ID: ${w.cctnsId || "—"} · Crime No: ${w.crimeNoYear || "—"} · Unit: ${w.policeUnit || ""}`;
 
   const snapshotFields = ["policeUnit","policeStation","court","courtCaseNo","warrantType","warrantDate","sectionsOfLaw","categoryOfCase","fatherSpouseName","originalAddress"];
   document.getElementById("modalSnapshot").innerHTML = snapshotFields.map(k => `
@@ -989,7 +842,6 @@ function openEditModal(id){
     if (el) el.value = w[key] || "";
   });
   document.getElementById("f_remarks").value = w.remarks || "";
-
   document.getElementById("editModal").classList.remove("hidden");
 }
 
@@ -1000,32 +852,22 @@ function closeEditModal(){
 
 async function saveEdit(){
   if (!activeEditId) return;
-
-  // Defense-in-depth: re-check jurisdiction at save time, not just when the modal opened.
-  const target = WARRANTS.find(r => r.id === activeEditId);
-  if (!SESSION || (!isAdminSession() && target && target.policeUnit !== SESSION.unit)) {
-    toast("Access denied: this warrant does not belong to your unit.", "error");
-    closeEditModal();
-    return;
-  }
-
   const fields = {};
   Object.values(EDIT_GROUPS).flat().forEach(key => {
     const el = document.getElementById("f_" + key);
     if (el) fields[key] = el.value;
   });
   fields.remarks = document.getElementById("f_remarks").value;
-
-  // Audit trail metadata
+  // Audit trail stamp
   fields.lastUpdatedAt = new Date().toISOString();
-  fields.lastUpdatedByUnit = SESSION.unit;
-  fields.lastUpdatedByOfficer = SESSION.officer;
+  fields.lastUpdatedByUnit = CURRENT_USER.unit;
+  fields.lastUpdatedByOfficer = CURRENT_USER.officer;
 
   const btn = document.getElementById("saveEdit");
   btn.disabled = true; btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Saving…`; lucide.createIcons();
   try {
     await updateWarrantFields(activeEditId, fields);
-    toast("Record updated successfully.");
+    toast("Record updated & audited successfully.");
     closeEditModal();
   } catch (e) {
     console.error(e);
@@ -1035,157 +877,42 @@ async function saveEdit(){
   }
 }
 
-/* ---------------------------------------------------------------------
-   12. CSV EXPORT (matches proforma column order)
-   --------------------------------------------------------------------- */
-function toCSVValue(v){
-  const s = String(v ?? "");
-  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
-  return s;
-}
 function exportCSV(){
   const rows = filteredWarrants();
-  const exportFields = FIELDS.concat(AUDIT_FIELDS);
-  const header = exportFields.map(f => f[1]);
+  const header = FIELDS.map(f => f[1]);
   const lines = [header.map(toCSVValue).join(",")];
   rows.forEach(w => {
-    lines.push(exportFields.map(([k]) => toCSVValue(w[k])).join(","));
+    lines.push(FIELDS.map(([k]) => toCSVValue(w[k])).join(","));
   });
   const csv = lines.join("\r\n");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  const stamp = new Date().toISOString().slice(0,10);
-  a.href = url; a.download = `AP_Police_Pending_Warrants_Export_${stamp}.csv`;
+  a.href = url; a.download = `AP_Police_Pending_Warrants_${CURRENT_USER.unit.replace(/\s+/g,'_')}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast(`Exported ${rows.length} record(s) to CSV.`);
+  toast(`Exported ${rows.length} record(s).`);
+}
+function toCSVValue(v){
+  const s = String(v ?? "");
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+  return s;
 }
 
-/* ---------------------------------------------------------------------
-   13. SEED FLOW
-   --------------------------------------------------------------------- */
 async function handleSeed(){
   try {
     const empty = await isCollectionEmpty();
-    if (!empty) {
-      const proceed = confirm("The database already has records. Seed again anyway? (Existing records with matching IDs will be merged/updated, not duplicated.)");
-      if (!proceed) return;
-    }
-    const btn = document.getElementById("seedBtn");
-    btn.disabled = true; btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Seeding…`; lucide.createIcons();
-
+    if (!empty && confirm("Database already has records. Overwrite/merge with seed data?") === false) return;
     const res = await fetch("./warrants_data.json");
-    if (!res.ok) throw new Error("warrants_data.json not found next to index.html");
+    if (!res.ok) throw new Error("warrants_data.json not found");
     const data = await res.json();
     const count = await seedDatabase(data);
-    toast(`Seeded ${count} warrant record(s) into the database.`);
+    toast(`Seeded ${count} warrant records.`);
   } catch (e) {
-    console.error(e);
     toast("Seed failed: " + e.message, "error");
-  } finally {
-    const btn = document.getElementById("seedBtn");
-    btn.disabled = false; btn.innerHTML = `<i data-lucide="database" class="w-4 h-4"></i> Seed Database`; lucide.createIcons();
   }
 }
 
-async function autoSeedIfEmpty(){
-  try {
-    const empty = await isCollectionEmpty();
-    if (empty) {
-      const res = await fetch("./warrants_data.json");
-      if (res.ok) {
-        const data = await res.json();
-        await seedDatabase(data);
-        toast(`Database was empty — auto-loaded ${data.length} sample record(s).`);
-      }
-    }
-  } catch (e) {
-    console.warn("Auto-seed skipped:", e.message);
-  }
-}
-
-/* ---------------------------------------------------------------------
-   13b. LOGIN / SESSION UI
-   --------------------------------------------------------------------- */
-function buildLoginUnitOptions(){
-  const sel = document.getElementById("loginUnit");
-  sel.innerHTML = POLICE_UNITS.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("");
-}
-
-function showLoginOverlay(){
-  document.getElementById("loginOverlay").classList.remove("hidden");
-  const hint = document.getElementById("demoPinHint");
-  if (DEMO_MODE) {
-    hint.classList.remove("hidden");
-    hint.innerHTML = `<strong>Demo PINs</strong> (for trying out the app): any Field Unit PIN is its 4-digit code
-      below, e.g. Nellore = 1011, Visakhapatnam City = 1001. State HQ Admin PIN = ${escapeHtml(HQ_ADMIN_PIN)}.
-      Change every PIN in the script before real deployment.`;
-  } else {
-    hint.classList.add("hidden");
-  }
-}
-function hideLoginOverlay(){
-  document.getElementById("loginOverlay").classList.add("hidden");
-}
-
-function renderSessionBadge(){
-  const el = document.getElementById("sessionBadge");
-  const seedBtn = document.getElementById("seedBtn");
-  if (!SESSION) { el.classList.add("hidden"); return; }
-  el.classList.remove("hidden");
-  const admin = isAdminSession();
-  el.className = "badge surface-2 " + (admin ? "text-brass-500" : "");
-  el.innerHTML = `<i data-lucide="${admin?'shield':'map-pin'}" class="w-3 h-3"></i> ${escapeHtml(SESSION.unit)} · ${escapeHtml(SESSION.officer)} ${admin ? "(State HQ Admin)" : ""}`;
-  // Only State HQ Admin can re-seed the statewide database.
-  seedBtn.classList.toggle("hidden", !admin);
-  seedBtn.classList.toggle("flex", admin);
-  lucide.createIcons();
-}
-
-function handleLoginSubmit(e){
-  e.preventDefault();
-  const unit = document.getElementById("loginUnit").value;
-  const role = document.querySelector('input[name="loginRole"]:checked').value;
-  const officer = document.getElementById("loginOfficer").value.trim();
-  const pin = document.getElementById("loginPin").value.trim();
-  const errEl = document.getElementById("loginError");
-  const showError = (msg) => { errEl.classList.remove("hidden"); errEl.querySelector("span").textContent = msg; lucide.createIcons(); };
-
-  if (!officer) { showError("Please enter your name or badge number."); return; }
-
-  let valid = false;
-  if (role === "hq_admin") {
-    valid = pin === HQ_ADMIN_PIN;
-    if (!valid) { showError("Incorrect State HQ Admin passcode."); return; }
-  } else {
-    const expected = UNIT_PINS[unit];
-    valid = !!expected && pin === expected;
-    if (!valid) { showError(`Incorrect PIN for ${unit}.`); return; }
-  }
-
-  errEl.classList.add("hidden");
-  saveSession({ unit, role, officer, loginAt: new Date().toISOString() });
-  hideLoginOverlay();
-  page = 1;
-  filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"" };
-  syncFilterInputsFromState();
-  renderSessionBadge();
-  renderAll();
-  toast(`Welcome, ${officer}. Logged in to ${isAdminSession() ? "State HQ (all units)" : unit}.`);
-}
-
-function handleLogout(){
-  if (!confirm("Log out of the current session?")) return;
-  clearSession();
-  document.getElementById("loginForm").reset();
-  renderSessionBadge();
-  showLoginOverlay();
-}
-
-/* ---------------------------------------------------------------------
-   14. TABS / THEME
-   --------------------------------------------------------------------- */
 function switchTab(tab){
   currentTab = tab;
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
@@ -1214,9 +941,6 @@ function updateThemeIcon(){
   lucide.createIcons();
 }
 
-/* ---------------------------------------------------------------------
-   15. MASTER RENDER + EVENT WIRING
-   --------------------------------------------------------------------- */
 function renderAll(){
   populateFilterOptions();
   renderKPIs();
@@ -1243,7 +967,9 @@ function wireEvents(){
   });
   document.getElementById("clearFilters").addEventListener("click", () => {
     filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"" };
-    syncFilterInputsFromState(); page = 1; renderMasterTable();
+    document.getElementById("searchInput").value = "";
+    ["filterUnit","filterState","filterAddrStatus","filterExecStatus","filterPriority","filterAgeing"].forEach(id => document.getElementById(id).value = "");
+    page = 1; renderMasterTable();
   });
   document.getElementById("prevPage").addEventListener("click", () => { if (page>1){ page--; renderMasterTable(); } });
   document.getElementById("nextPage").addEventListener("click", () => { page++; renderMasterTable(); });
@@ -1251,28 +977,16 @@ function wireEvents(){
   document.getElementById("closeModal").addEventListener("click", closeEditModal);
   document.getElementById("cancelEdit").addEventListener("click", closeEditModal);
   document.getElementById("saveEdit").addEventListener("click", saveEdit);
-  document.getElementById("editModal").addEventListener("click", (e) => { if (e.target.id === "editModal") closeEditModal(); });
-
-  document.getElementById("loginForm").addEventListener("submit", handleLoginSubmit);
-  document.getElementById("logoutBtn").addEventListener("click", handleLogout);
 }
 
-/* ---------------------------------------------------------------------
-   16. BOOTSTRAP
-   --------------------------------------------------------------------- */
-(function init(){
+function bootApp(){
   lucide.createIcons();
   initTheme();
   buildEditFormOnce();
-  buildLoginUnitOptions();
   wireEvents();
 
-  SESSION = loadSession();
-  if (SESSION) { hideLoginOverlay(); } else { showLoginOverlay(); }
-  renderSessionBadge();
-
   if (DEMO_MODE) {
-    setConnStatus("demo", "Demo Mode (local browser storage)");
+    setConnStatus("demo", "Demo Mode (Local Storage)");
   } else {
     setConnStatus("connecting", "Connecting to Firestore…");
   }
@@ -1281,12 +995,10 @@ function wireEvents(){
     if (!DEMO_MODE) setConnStatus("live", `Live · ${data.length} records`);
     renderAll();
   });
+}
 
-  if (!DEMO_MODE) {
-    autoSeedIfEmpty();
-  } else {
-    isCollectionEmpty().then(empty => { if (empty) autoSeedIfEmpty(); });
-  }
+(function(){
+  checkLoginSession();
 })();
 </script>
 </body>

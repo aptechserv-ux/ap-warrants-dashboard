@@ -1,0 +1,50 @@
+# AP Police — Statewide Pending Warrants Monitoring & Execution System
+
+DGP Desk No. 85 · Single-file app (`index.html`) · Free to host on **GitHub Pages** + **Firebase Firestore** (free Spark tier), with an automatic **Demo Mode** fallback to `localStorage` if no Firebase project is configured.
+
+## What's in this repo
+
+- `index.html` — the entire application (Tailwind CSS, Lucide icons, Chart.js, Firebase Firestore compat SDK). Single file, no build step.
+- `warrants_data.json` — seed dataset (120 records) matching the full CCTNS Uniform Proforma schema, used by the in-app "Seed Database" button and auto-seed-if-empty on first load.
+- `Out of State Warrants_CCTNS.xlsx` — the original source export this seed data was derived from.
+- `exceltojsonconvertor.py` — the script used to convert the Excel export into `warrants_data.json`. Re-run it if the source Excel is updated.
+- `.github/workflows/deploy-pages.yml` — GitHub Actions workflow that deploys this repo to GitHub Pages on every push to `main`.
+
+## One-time setup: enable GitHub Pages
+
+The workflow above deploys automatically, but GitHub requires one manual, one-time toggle per repo before it will accept that deployment:
+
+1. On GitHub, open **Settings → Pages** for this repository.
+2. Under **Build and deployment → Source**, choose **GitHub Actions** (not "Deploy from a branch").
+3. Push to `main` (or re-run the workflow from the **Actions** tab) — the site will publish to `https://<your-username>.github.io/ap-warrants-dashboard/`.
+
+## Going live on Firebase (optional — Demo Mode works without this)
+
+By default `index.html` runs in **Demo Mode**: all data lives in the browser's `localStorage`, which is enough to try out every feature but is per-browser/per-device, not shared across officers.
+
+To make it a real shared, live database:
+
+1. Create a free Firebase project at https://console.firebase.google.com (Spark/free tier is enough).
+2. Enable **Firestore Database** (production mode is fine — see security notes below).
+3. In Firebase Console → Project Settings → General → "Your apps", register a Web App and copy its config object.
+4. Paste those values into the `firebaseConfig` object near the top of the `<script>` block in `index.html` (search for `YOUR_API_KEY`).
+5. Commit and push — `DEMO_MODE` auto-detects a real config and switches to Firestore automatically.
+
+### Security notes
+
+Login in this app is a **client-side access gate** (per-unit PINs defined in `UNIT_PINS` in `index.html`) — good for day-to-day accidental-cross-unit-edit prevention and for driving the audit trail, but it is not server-enforced: anyone who can view the page source can see the PIN list, and Firestore itself has no rules keyed to login yet. Before using this with real, sensitive warrant data:
+
+- **Change every PIN** in `UNIT_PINS` and `HQ_ADMIN_PIN`.
+- Add **Firebase Authentication** (email/password or phone OTP per officer).
+- Write **Firestore Security Rules** that check a custom claim (e.g. `request.auth.token.unit`) against `resource.data.policeUnit`, so access is enforced by the server, not just the UI.
+
+## Data model
+
+All 66 fields of the DGP Desk No. 85 Uniform Proforma are defined in the `FIELDS` array in `index.html`, in proforma order, and are included in CSV exports. Editable "field unit update" fields are grouped by section in the Update modal (Address Verification, NATGRID/CCTNS checks, Location & Execution Planning, Team Deployment, Court Compliance, Next Action). Every save automatically stamps `lastUpdatedByUnit`, `lastUpdatedByOfficer`, and `lastUpdatedAt` for the audit trail.
+
+## Using the app
+
+- **Dashboard** — 10 KPI cards matching the official Excel "State Dashboard" proforma (Total Warrants, Inter-State Team Required, Executed, Pending/In Progress, Address Not Traceable, NATGRID Requested/Pending, >3/>5/>10 Years, Court Report Filed), plus state-wise distribution, ageing-bucket, and execution-funnel charts.
+- **Warrant Master Data** — searchable, filterable, paginated (25/page) register. Field units see only their own unit's warrants; **IGP Technical Services HQ** (or the "State HQ Admin" login role) sees and can seed the full statewide dataset.
+- **State Deployment & Clustering** — inter-state warrants auto-grouped by destination State/UT, to help stand up dedicated execution teams.
+- **Export CSV** — exports the currently filtered rows in the full proforma column order, plus the audit-trail columns.
