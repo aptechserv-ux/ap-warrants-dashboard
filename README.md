@@ -5,9 +5,9 @@ DGP Desk No. 85 · Single-file app (`index.html`) · Free to host on **GitHub Pa
 ## What's in this repo
 
 - `index.html` — the entire application (Tailwind CSS, Lucide icons, Chart.js, Firebase Firestore compat SDK). Single file, no build step.
-- `warrants_data.json` — seed dataset (120 records) matching the full CCTNS Uniform Proforma schema, used by the in-app "Seed Database" button and auto-seed-if-empty on first load.
+- `warrants_data.json` — the full seed dataset: **6,435 real warrant records**, converted directly from `Out of State Warrants_CCTNS.xlsx` (every row in that export, not a sample), matching the CCTNS Uniform Proforma schema. Used by the in-app "Seed Database" button and auto-seed-if-empty on first load.
 - `Out of State Warrants_CCTNS.xlsx` — the original source export this seed data was derived from.
-- `exceltojsonconvertor.py` — the script used to convert the Excel export into `warrants_data.json`. Re-run it if the source Excel is updated.
+- `exceltojsonconvertor.py` — the real conversion script (`python3 exceltojsonconvertor.py "Out of State Warrants_CCTNS.xlsx" warrants_data.json`) used to produce `warrants_data.json`. Re-run it whenever the source Excel is refreshed with new or updated records — it handles the DD/MM/YYYY date formats, strips the stray quote characters Excel adds to numeric-looking IDs, and recomputes ageing from each warrant's actual date.
 - `.github/workflows/deploy-pages.yml` — GitHub Actions workflow that deploys this repo to GitHub Pages on every push to `main`.
 
 ## One-time setup: enable GitHub Pages
@@ -41,6 +41,12 @@ Login in this app is a **client-side access gate** (per-unit PINs defined in `UN
 ## Data model
 
 All 66 fields of the DGP Desk No. 85 Uniform Proforma are defined in the `FIELDS` array in `index.html`, in proforma order, and are included in CSV exports. Editable "field unit update" fields are grouped by section in the Update modal (Address Verification, NATGRID/CCTNS checks, Location & Execution Planning, Team Deployment, Court Compliance, Next Action). Every save automatically stamps `lastUpdatedByUnit`, `lastUpdatedByOfficer`, and `lastUpdatedAt` for the audit trail.
+
+Several verification/tracing fields (Address Verification Status, Priority, Inter-State Team Required, NATGRID Verification Required/Status, Report Filed Before Court) come through **blank** from the real CCTNS export — those are exactly the fields field units are expected to fill in via the Update modal, not facts CCTNS already records. The KPI cards that depend on them will read 0 until officers start updating records; that's expected, not a bug.
+
+Execution Status uses the department's own real wording as found in the export — `NBWs yet to Entrust`, `NBWs Execution Pending`, `NBWs Return to court`, `NBWs Recalled`, `NBWs Executed` — rather than a generic Pending/In Progress/Executed scheme.
+
+Police Unit values match the **current (post-2022 reorganization)** CCTNS unit list actually present in the data (e.g. `NTR Commissionerate`, `YSR Kadapa`, `Tirupathi`, `Dr. B R Ambedkar Konaseema`, `Alluri Sitharama Raju`, two GRP (railway) units, etc.) — 30 units in total, each with its own login PIN in `UNIT_PINS`, plus `IGP Technical Services HQ` for statewide oversight.
 
 ## Using the app
 

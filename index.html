@@ -384,18 +384,15 @@ if (!DEMO_MODE) {
        CHANGE THESE PINS before real deployment.
    --------------------------------------------------------------------- */
 const POLICE_UNITS = [
-  "Visakhapatnam City","Vijayawada City","Tirupati Urban","Srikakulam","Vizianagaram",
-  "East Godavari","West Godavari","Krishna","Guntur Urban","Prakasam","Nellore","Kadapa",
-  "Kurnool","Anantapur","Chittoor","IGP Technical Services HQ"
+  "Chittoor","Tirupathi","YSR Kadapa","NTR Commissionerate","Annamayya","GRP Vijayawada","Eluru","Sri Potti Sriramulu Nellore","Anakapalli","Kakinada","East Godavari","West Godavari","Vizianagaram","Srikakulam","Kurnool","Polavaram","Alluri Sitharama Raju","Sri Sathya Sai","Ananthapuram","Visakhapatnam Commissionerate","Palnadu","Prakasam","Dr. B R Ambedkar Konaseema","Nandyal","Bapatla","Parvathipuram Manyam","GRP Guntakal","Guntur","Markapuram","Krishna","IGP Technical Services HQ"
 ];
 const HQ_UNIT_NAME = "IGP Technical Services HQ";
 
 // Per-unit PIN map (demo defaults — replace every value before go-live).
+// Units match the current (post-2022 reorganization) CCTNS unit names found
+// in the real "Out of State Warrants_CCTNS" export, not the pre-2022 district list.
 const UNIT_PINS = {
-  "Visakhapatnam City":"1001","Vijayawada City":"1002","Tirupati Urban":"1003","Srikakulam":"1004",
-  "Vizianagaram":"1005","East Godavari":"1006","West Godavari":"1007","Krishna":"1008",
-  "Guntur Urban":"1009","Prakasam":"1010","Nellore":"1011","Kadapa":"1012","Kurnool":"1013",
-  "Anantapur":"1014","Chittoor":"1015","IGP Technical Services HQ":"8500"
+  "Chittoor":"1001","Tirupathi":"1002","YSR Kadapa":"1003","NTR Commissionerate":"1004","Annamayya":"1005","GRP Vijayawada":"1006","Eluru":"1007","Sri Potti Sriramulu Nellore":"1008","Anakapalli":"1009","Kakinada":"1010","East Godavari":"1011","West Godavari":"1012","Vizianagaram":"1013","Srikakulam":"1014","Kurnool":"1015","Polavaram":"1016","Alluri Sitharama Raju":"1017","Sri Sathya Sai":"1018","Ananthapuram":"1019","Visakhapatnam Commissionerate":"1020","Palnadu":"1021","Prakasam":"1022","Dr. B R Ambedkar Konaseema":"1023","Nandyal":"1024","Bapatla":"1025","Parvathipuram Manyam":"1026","GRP Guntakal":"1027","Guntur":"1028","Markapuram":"1029","Krishna":"1030","IGP Technical Services HQ":"8500"
 };
 // Separate admin passcode required for the "State HQ Admin" role regardless of unit chosen.
 const HQ_ADMIN_PIN = "8500";
@@ -450,7 +447,7 @@ const OPTS = {
   priority: ["Critical","High","Normal"],
   interStateTeamRequired: ["Yes","No"],
   localPoliceCoordination: ["Requested","Confirmed","Not Initiated","N/A"],
-  executionStatus: ["Pending","In Progress","Team Deployed","Executed","Untraceable","Returned Unexecuted","Stayed / Withdrawn"],
+  executionStatus: ["NBWs yet to Entrust","NBWs Execution Pending","NBWs Return to court","NBWs Recalled","NBWs Executed"],
   productionTransitStatus: ["N/A","Produced Before Court","In Transit","Remanded"],
   courtIntimated: ["Yes","No"],
   untraceableEffortsRecorded: ["Yes","No"],
@@ -657,9 +654,9 @@ function renderKPIs(){
   const scope = scopedWarrants();
   const total = scope.length;
   const interTeamReq = scope.filter(w => w.interStateTeamRequired === "Yes").length;
-  const executed = scope.filter(w => w.executionStatus === "Executed").length;
-  const pendingInProgress = scope.filter(w => w.executionStatus === "Pending" || w.executionStatus === "In Progress").length;
-  const notTraceable = scope.filter(w => w.executionStatus === "Untraceable").length;
+  const executed = scope.filter(w => w.executionStatus === "NBWs Executed").length;
+  const pendingInProgress = scope.filter(w => w.executionStatus === "NBWs Execution Pending" || w.executionStatus === "NBWs yet to Entrust").length;
+  const notTraceable = scope.filter(w => w.untraceableEffortsRecorded === "Yes").length;
   const natgridPending = scope.filter(w => w.natgridVerificationRequired === "Yes" && w.natgridVerificationStatus === "Pending").length;
   const over3 = scope.filter(w => w.ageingDays > 3*365).length;
   const over5 = scope.filter(w => w.ageingDays > 5*365).length;
@@ -745,8 +742,8 @@ function renderCharts(){
     options: { plugins:{ legend:{ position:"bottom", labels:{ boxWidth:10, font:{size:10} } } } }
   });
 
-  // Execution funnel: Pending -> In Progress -> Team Deployed -> Executed
-  const funnelStages = ["Pending","In Progress","Team Deployed","Executed"];
+  // Execution funnel: real CCTNS execution-status pipeline
+  const funnelStages = ["NBWs yet to Entrust","NBWs Execution Pending","NBWs Return to court","NBWs Recalled","NBWs Executed"];
   const funnelCounts = funnelStages.map(s => scope.filter(w=>w.executionStatus===s).length);
   if (charts.funnel) charts.funnel.destroy();
   charts.funnel = new Chart(document.getElementById("funnelChart"), {
@@ -761,13 +758,11 @@ function renderCharts(){
    --------------------------------------------------------------------- */
 function statusBadge(status){
   const map = {
-    "Executed":"bg-emerald-500/15 text-emerald-500",
-    "Pending":"bg-slate-500/15 text-slate-400",
-    "In Progress":"bg-amber-500/15 text-amber-500",
-    "Team Deployed":"bg-blue-500/15 text-blue-400",
-    "Untraceable":"bg-rose-500/15 text-rose-500",
-    "Returned Unexecuted":"bg-rose-500/15 text-rose-500",
-    "Stayed / Withdrawn":"bg-purple-500/15 text-purple-400"
+    "NBWs Executed":"bg-emerald-500/15 text-emerald-500",
+    "NBWs yet to Entrust":"bg-slate-500/15 text-slate-400",
+    "NBWs Execution Pending":"bg-amber-500/15 text-amber-500",
+    "NBWs Return to court":"bg-rose-500/15 text-rose-500",
+    "NBWs Recalled":"bg-purple-500/15 text-purple-400"
   };
   return `<span class="badge ${map[status]||'bg-slate-500/15 text-slate-400'}">${escapeHtml(status||"—")}</span>`;
 }
