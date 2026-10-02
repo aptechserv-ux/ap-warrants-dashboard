@@ -581,6 +581,34 @@ async function isCollectionEmpty(){
   return snap.empty;
 }
 
+// Deterministic but non-sequential document ID from a stable row number.
+// Firestore shards collections by document-ID range, so a burst of writes
+// with plain sequential IDs ("w1","w2","w3"...) into a brand-new collection
+// piles onto a single shard and gets throttled/rejected mid-seed -- this is
+// exactly what caused an earlier seed to silently stop partway through.
+// Scrambling the ID (same slNo always maps to the same ID, so re-seeding
+// stays idempotent) spreads writes across the keyspace instead.
+function scrambleDocId(slNo, fallback){
+  if (slNo == null) return fallback;
+  const h = (Math.imul(Number(slNo) + 1, 2654435761) >>> 0);
+  return "w" + h.toString(36);
+}
+
+function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function commitWithRetry(batch, attempt = 0){
+  try {
+    await batch.commit();
+  } catch (e) {
+    const retryable = ["resource-exhausted", "aborted", "deadline-exceeded", "unavailable", "cancelled"];
+    if (attempt < 5 && retryable.includes(e.code)) {
+      await sleep(500 * Math.pow(2, attempt)); // 500ms, 1s, 2s, 4s, 8s
+      return commitWithRetry(batch, attempt + 1);
+    }
+    throw e;
+  }
+}
+
 async function seedDatabase(records, overwrite=false){
   if (DEMO_MODE || !db) {
     const withIds = records.map((r,i) => Object.assign({}, r, { id: r.id || ("local_" + (r.slNo || i+1)) }));
@@ -589,23 +617,29 @@ async function seedDatabase(records, overwrite=false){
     renderAll();
     return records.length;
   }
-  const batchSize = 400;
+  const batchSize = 200; // smaller bursts, easier on a freshly (re)created collection
   let count = 0;
+  let failedAt = null;
   for (let i=0; i<records.length; i+=batchSize) {
     const batch = db.batch();
     const chunk = records.slice(i, i+batchSize);
     chunk.forEach(rec => {
-      // slNo (the source row number) is guaranteed unique per warrant row.
-      // cctnsId/warrantNo are NOT reliably unique -- the same CCTNS ID or
-      // warrant number can legitimately cover multiple co-accused rows in
-      // one case, and keying docs on them silently collapsed ~900 distinct
-      // warrant rows into shared documents on the first seed.
-      const docId = rec.slNo != null ? ("w" + rec.slNo) : (db.collection(COLLECTION_NAME).doc().id);
+      const docId = scrambleDocId(rec.slNo, db.collection(COLLECTION_NAME).doc().id);
       const ref = db.collection(COLLECTION_NAME).doc(String(docId));
       batch.set(ref, rec, { merge: !overwrite ? true : false });
-      count++;
     });
-    await batch.commit();
+    try {
+      await commitWithRetry(batch);
+      count += chunk.length;
+    } catch (e) {
+      console.error(`Seed batch starting at record ${i} failed after retries:`, e);
+      failedAt = i;
+      break;
+    }
+    if (i + batchSize < records.length) await sleep(150); // pace consecutive batches
+  }
+  if (failedAt !== null) {
+    throw new Error(`Only ${count} of ${records.length} records were written before batch ${failedAt} failed repeatedly -- click "Seed Database" again to resume (already-written records are skipped/updated, not duplicated).`);
   }
   return count;
 }
