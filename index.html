@@ -15,6 +15,7 @@
 <!-- Firebase (compat SDK, simplest for a single-file app) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 
 <script>
   tailwind.config = {
@@ -224,7 +225,7 @@
         <p class="text-dim text-xs leading-tight">AP Police Statewide Pending Warrants System</p>
       </div>
     </div>
-    <p class="text-dim text-xs mt-3 mb-4">Sign in with your Police Unit / Commissionerate and Unit PIN to access warrant records within your jurisdiction. State HQ Admins can view and oversee all units.</p>
+    <p class="text-dim text-xs mt-3 mb-4">Sign in with your Police Unit / Commissionerate and your unit's secure credential to access warrant records within your jurisdiction. State HQ Admins can view and oversee all units.</p>
 
     <form id="loginForm" class="space-y-3.5">
       <div>
@@ -250,8 +251,8 @@
       </div>
 
       <div>
-        <label class="text-xs font-semibold text-dim">Unit PIN / Passcode</label>
-        <input id="loginPin" type="password" required inputmode="numeric" placeholder="••••" class="w-full mt-1 px-3 py-2.5 rounded-lg text-sm" />
+        <label class="text-xs font-semibold text-dim" id="loginPinLabel">Unit PIN / Passcode</label>
+        <input id="loginPin" type="password" required placeholder="••••" class="w-full mt-1 px-3 py-2.5 rounded-lg text-sm" />
       </div>
 
       <p id="loginError" class="text-rose-500 text-xs hidden flex items-center gap-1"><i data-lucide="alert-circle" class="w-3.5 h-3.5"></i><span></span></p>
@@ -343,22 +344,25 @@
       everything before connecting a real project.
    --------------------------------------------------------------------- */
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyBpsSvoS8kqVjfBAlrCHxhamYUvhjVp01A",
+  authDomain: "ap-warrants-system.firebaseapp.com",
+  projectId: "ap-warrants-system",
+  storageBucket: "ap-warrants-system.firebasestorage.app",
+  messagingSenderId: "64763757347",
+  appId: "1:64763757347:web:2674ac693f922eaab90296"
 };
 
 const COLLECTION_NAME = "warrants";
-const DEMO_MODE = !firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY";
+const PLACEHOLDER_API_KEY = "YOUR_API_KEY";
+const DEMO_MODE = !firebaseConfig.apiKey || firebaseConfig.apiKey === PLACEHOLDER_API_KEY;
 
 let db = null;
+let auth = null;
 if (!DEMO_MODE) {
   try {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    auth = firebase.auth();
   } catch (e) {
     console.error("Firebase init failed, falling back to demo mode.", e);
   }
@@ -386,7 +390,7 @@ if (!DEMO_MODE) {
 const POLICE_UNITS = [
   "Chittoor","Tirupathi","YSR Kadapa","NTR Commissionerate","Annamayya","GRP Vijayawada","Eluru","Sri Potti Sriramulu Nellore","Anakapalli","Kakinada","East Godavari","West Godavari","Vizianagaram","Srikakulam","Kurnool","Polavaram","Alluri Sitharama Raju","Sri Sathya Sai","Ananthapuram","Visakhapatnam Commissionerate","Palnadu","Prakasam","Dr. B R Ambedkar Konaseema","Nandyal","Bapatla","Parvathipuram Manyam","GRP Guntakal","Guntur","Markapuram","Krishna","IGP Technical Services HQ"
 ];
-const HQ_UNIT_NAME = "IGP Technical Services HQ";
+const HQ_UNIT_NAME = "PHQ";
 
 // Per-unit PIN map (demo defaults — replace every value before go-live).
 // Units match the current (post-2022 reorganization) CCTNS unit names found
@@ -395,7 +399,18 @@ const UNIT_PINS = {
   "Chittoor":"1001","Tirupathi":"1002","YSR Kadapa":"1003","NTR Commissionerate":"1004","Annamayya":"1005","GRP Vijayawada":"1006","Eluru":"1007","Sri Potti Sriramulu Nellore":"1008","Anakapalli":"1009","Kakinada":"1010","East Godavari":"1011","West Godavari":"1012","Vizianagaram":"1013","Srikakulam":"1014","Kurnool":"1015","Polavaram":"1016","Alluri Sitharama Raju":"1017","Sri Sathya Sai":"1018","Ananthapuram":"1019","Visakhapatnam Commissionerate":"1020","Palnadu":"1021","Prakasam":"1022","Dr. B R Ambedkar Konaseema":"1023","Nandyal":"1024","Bapatla":"1025","Parvathipuram Manyam":"1026","GRP Guntakal":"1027","Guntur":"1028","Markapuram":"1029","Krishna":"1030","IGP Technical Services HQ":"8500"
 };
 // Separate admin passcode required for the "State HQ Admin" role regardless of unit chosen.
-const HQ_ADMIN_PIN = "8500";
+const HQ_ADMIN_PIN = "9999";
+
+// --- Live-mode (Firebase Authentication) email scheme -----------------
+// Each unit (and HQ) is provisioned as one Firebase Auth account by an
+// admin using scripts/create_officer_accounts.js (service-account only,
+// never run from this client file). This maps a unit/role to that
+// account's login email; the *password* is never stored here — it lives
+// only in Firebase Auth, entered by the officer at login.
+function slugUnit(u){ return String(u).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,""); }
+function authEmailFor(unit, role){
+  return role === "hq_admin" ? "hq-admin@ap-warrants.local" : `${slugUnit(unit)}@ap-warrants.local`;
+}
 
 const SESSION_KEY = "ap_warrants_session_v1";
 let SESSION = null; // { unit, role, officer, loginAt }
@@ -1111,13 +1126,20 @@ function buildLoginUnitOptions(){
 function showLoginOverlay(){
   document.getElementById("loginOverlay").classList.remove("hidden");
   const hint = document.getElementById("demoPinHint");
+  const pinLabel = document.getElementById("loginPinLabel");
   if (DEMO_MODE) {
+    pinLabel.textContent = "Unit PIN / Passcode";
     hint.classList.remove("hidden");
     hint.innerHTML = `<strong>Demo PINs</strong> (for trying out the app): any Field Unit PIN is its 4-digit code
       below, e.g. Nellore = 1011, Visakhapatnam City = 1001. State HQ Admin PIN = ${escapeHtml(HQ_ADMIN_PIN)}.
       Change every PIN in the script before real deployment.`;
   } else {
-    hint.classList.add("hidden");
+    pinLabel.textContent = "Password";
+    hint.classList.remove("hidden");
+    hint.innerHTML = `This system is in <strong>Live mode</strong> — sign in with the password your
+      State HQ Admin provisioned for your unit via Firebase Authentication (see
+      <code>scripts/create_officer_accounts.js</code>). Access is enforced server-side by
+      Firestore Security Rules keyed to your unit, not just by this login screen.`;
   }
 }
 function hideLoginOverlay(){
@@ -1138,7 +1160,30 @@ function renderSessionBadge(){
   lucide.createIcons();
 }
 
-function handleLoginSubmit(e){
+function completeLogin(sessionData, officer){
+  saveSession(sessionData);
+  hideLoginOverlay();
+  page = 1;
+  filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"" };
+  syncFilterInputsFromState();
+  renderSessionBadge();
+  if (!DEMO_MODE) {
+    // Live mode: (re)subscribe now that we're authenticated -- Firestore
+    // Security Rules reject unauthenticated reads, so this must not run
+    // until sign-in succeeds (see bootstrap at the bottom of this file).
+    setConnStatus("connecting", "Connecting to Firestore…");
+    startRealtimeSync((data) => {
+      setConnStatus("live", `Live · ${data.length} records`);
+      renderAll();
+    });
+    autoSeedIfEmpty();
+  } else {
+    renderAll();
+  }
+  toast(`Welcome, ${officer}. Logged in to ${isAdminSession() ? "State HQ (all units)" : sessionData.unit}.`);
+}
+
+async function handleLoginSubmit(e){
   e.preventDefault();
   const unit = document.getElementById("loginUnit").value;
   const role = document.querySelector('input[name="loginRole"]:checked').value;
@@ -1146,32 +1191,69 @@ function handleLoginSubmit(e){
   const pin = document.getElementById("loginPin").value.trim();
   const errEl = document.getElementById("loginError");
   const showError = (msg) => { errEl.classList.remove("hidden"); errEl.querySelector("span").textContent = msg; lucide.createIcons(); };
+  const submitBtn = document.querySelector('#loginForm button[type="submit"]');
 
   if (!officer) { showError("Please enter your name or badge number."); return; }
 
-  let valid = false;
-  if (role === "hq_admin") {
-    valid = pin === HQ_ADMIN_PIN;
-    if (!valid) { showError("Incorrect State HQ Admin passcode."); return; }
-  } else {
-    const expected = UNIT_PINS[unit];
-    valid = !!expected && pin === expected;
-    if (!valid) { showError(`Incorrect PIN for ${unit}.`); return; }
+  if (DEMO_MODE) {
+    // Demo Mode: client-side PIN check against UNIT_PINS (no real backend).
+    let valid = false;
+    if (role === "hq_admin") {
+      valid = pin === HQ_ADMIN_PIN;
+      if (!valid) { showError("Incorrect State HQ Admin passcode."); return; }
+    } else {
+      const expected = UNIT_PINS[unit];
+      valid = !!expected && pin === expected;
+      if (!valid) { showError(`Incorrect PIN for ${unit}.`); return; }
+    }
+    errEl.classList.add("hidden");
+    completeLogin({ unit, role, officer, loginAt: new Date().toISOString() }, officer);
+    return;
   }
 
+  // Live Mode: real Firebase Authentication, server-enforced by Firestore
+  // Security Rules keyed to each account's custom claims (unit / role).
   errEl.classList.add("hidden");
-  saveSession({ unit, role, officer, loginAt: new Date().toISOString() });
-  hideLoginOverlay();
-  page = 1;
-  filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"" };
-  syncFilterInputsFromState();
-  renderSessionBadge();
-  renderAll();
-  toast(`Welcome, ${officer}. Logged in to ${isAdminSession() ? "State HQ (all units)" : unit}.`);
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Signing in…`;
+  lucide.createIcons();
+  try {
+    const email = authEmailFor(unit, role);
+    const cred = await auth.signInWithEmailAndPassword(email, pin);
+    const idTokenResult = await cred.user.getIdTokenResult();
+    const claims = idTokenResult.claims || {};
+    const effectiveRole = claims.role === "hq_admin" ? "hq_admin" : "field";
+    const effectiveUnit = effectiveRole === "hq_admin" ? HQ_UNIT_NAME : (claims.unit || unit);
+    if (effectiveRole !== "hq_admin" && role === "hq_admin") {
+      await auth.signOut();
+      showError("This account is not provisioned as a State HQ Admin.");
+      return;
+    }
+    completeLogin({
+      unit: effectiveUnit, role: effectiveRole, officer,
+      uid: cred.user.uid, loginAt: new Date().toISOString()
+    }, officer);
+  } catch (err) {
+    console.error("Firebase sign-in failed:", err);
+    const code = err && err.code;
+    const msg = (code === "auth/wrong-password" || code === "auth/invalid-credential") ? "Incorrect password."
+      : code === "auth/user-not-found" ? `No account provisioned yet for ${role === "hq_admin" ? "State HQ Admin" : unit}.`
+      : code === "auth/too-many-requests" ? "Too many attempts. Please wait a moment and try again."
+      : "Sign-in failed: " + (err && err.message ? err.message : "unknown error");
+    showError(msg);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = `<i data-lucide="log-in" class="w-4 h-4"></i> Secure Login`;
+    lucide.createIcons();
+  }
 }
 
-function handleLogout(){
+async function handleLogout(){
   if (!confirm("Log out of the current session?")) return;
+  if (!DEMO_MODE && auth) {
+    try { await auth.signOut(); } catch (e) { console.warn("Sign-out error:", e); }
+    if (unsubscribeFn) { unsubscribeFn(); unsubscribeFn = null; }
+  }
   clearSession();
   document.getElementById("loginForm").reset();
   renderSessionBadge();
@@ -1262,26 +1344,54 @@ function wireEvents(){
   buildLoginUnitOptions();
   wireEvents();
 
-  SESSION = loadSession();
-  if (SESSION) { hideLoginOverlay(); } else { showLoginOverlay(); }
-  renderSessionBadge();
-
   if (DEMO_MODE) {
+    // Demo Mode: session + data both live in this browser's localStorage,
+    // so there's nothing to re-authenticate against -- restore as before.
     setConnStatus("demo", "Demo Mode (local browser storage)");
-  } else {
-    setConnStatus("connecting", "Connecting to Firestore…");
-  }
-
-  startRealtimeSync((data) => {
-    if (!DEMO_MODE) setConnStatus("live", `Live · ${data.length} records`);
-    renderAll();
-  });
-
-  if (!DEMO_MODE) {
-    autoSeedIfEmpty();
-  } else {
+    SESSION = loadSession();
+    if (SESSION) { hideLoginOverlay(); } else { showLoginOverlay(); }
+    renderSessionBadge();
+    startRealtimeSync((data) => { renderAll(); });
     isCollectionEmpty().then(empty => { if (empty) autoSeedIfEmpty(); });
+    return;
   }
+
+  // Live Mode: Firestore Security Rules require an authenticated request,
+  // so we gate everything on Firebase Auth's own session restore rather
+  // than the localStorage flag used in Demo Mode. This also means a
+  // revoked/disabled Firebase Auth account is logged out automatically
+  // on next load, not just trusted from local storage.
+  setConnStatus("connecting", "Checking sign-in…");
+  showLoginOverlay();
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) {
+      clearSession();
+      renderSessionBadge();
+      setConnStatus("demo", "Not signed in");
+      showLoginOverlay();
+      return;
+    }
+    try {
+      const idTokenResult = await user.getIdTokenResult();
+      const claims = idTokenResult.claims || {};
+      const effectiveRole = claims.role === "hq_admin" ? "hq_admin" : "field";
+      const effectiveUnit = effectiveRole === "hq_admin" ? HQ_UNIT_NAME : (claims.unit || "Unassigned");
+      const officer = (SESSION && SESSION.officer) || loadSession()?.officer || user.email;
+      saveSession({ unit: effectiveUnit, role: effectiveRole, officer, uid: user.uid, loginAt: new Date().toISOString() });
+      hideLoginOverlay();
+      renderSessionBadge();
+      setConnStatus("connecting", "Connecting to Firestore…");
+      startRealtimeSync((data) => {
+        setConnStatus("live", `Live · ${data.length} records`);
+        renderAll();
+      });
+      autoSeedIfEmpty();
+    } catch (e) {
+      console.error("Failed to restore session from Firebase Auth:", e);
+      setConnStatus("error", "Session error — please sign in again");
+      showLoginOverlay();
+    }
+  });
 })();
 </script>
 </body>

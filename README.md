@@ -54,3 +54,42 @@ Police Unit values match the **current (post-2022 reorganization)** CCTNS unit l
 - **Warrant Master Data** — searchable, filterable, paginated (25/page) register. Field units see only their own unit's warrants; **IGP Technical Services HQ** (or the "State HQ Admin" login role) sees and can seed the full statewide dataset.
 - **State Deployment & Clustering** — inter-state warrants auto-grouped by destination State/UT, to help stand up dedicated execution teams.
 - **Export CSV** — exports the currently filtered rows in the full proforma column order, plus the audit-trail columns.
+
+## Authentication & server-enforced access (recommended before real deployment)
+
+Login in this app has two modes:
+
+- **Demo Mode** (no real Firebase configured, or Firebase not yet set up): a client-side PIN check against `UNIT_PINS` in `index.html`. Fine for trying the app out, but anyone viewing the page source can see the PIN list, and nothing stops a determined user from bypassing the UI check in their browser.
+- **Live Mode** (a real `firebaseConfig` is set): real **Firebase Authentication** (email/password), with a **custom claim** (`unit` or `role: "hq_admin"`) set per account. Firestore Security Rules then check that claim server-side on every read/write — this is enforced by Firebase itself, not just by this page's JavaScript.
+
+### One-time setup for Live Mode
+
+1. **Enable Email/Password sign-in.** Firebase Console → **Build → Authentication → Sign-in method → Email/Password → Enable**.
+2. **Download a service account key** (admin credential — keep this off GitHub and off chat, it grants full admin access to your Firebase project): Console → **Project Settings → Service Accounts → Generate new private key**. Save it locally, e.g. as `service-account.json` (already covered by `.gitignore`).
+3. **Provision one account per unit**, each with the right custom claim:
+   ```
+   npm install firebase-admin
+   node scripts/create_officer_accounts.js ./service-account.json
+   ```
+   This creates (or, on re-run, just refreshes the claims on) one Firebase Auth account per Police Unit plus one for `IGP Technical Services HQ`, each with a freshly generated 16-character password, and prints a table of unit → login email → password **once**. Save that output somewhere safe (a password manager — not this repo) and distribute each unit's credential to that unit's officers through your normal secure channel.
+   - Re-run anytime to add units or refresh claims; existing passwords are left alone unless you pass `--reset-passwords`.
+4. **Replace the Firestore rules** (Console → Firestore Database → Rules) with:
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /warrants/{warrantId} {
+         allow read: if request.auth != null &&
+           (request.auth.token.role == 'hq_admin' || request.auth.token.unit == resource.data.policeUnit);
+         allow create: if request.auth != null && request.auth.token.role == 'hq_admin';
+         allow update: if request.auth != null &&
+           (request.auth.token.role == 'hq_admin' || request.auth.token.unit == resource.data.policeUnit);
+         allow delete: if request.auth != null && request.auth.token.role == 'hq_admin';
+       }
+     }
+   }
+   ```
+   This is what actually closes the gap: a field officer's requests are rejected by Firestore itself if `request.auth.token.unit` doesn't match the record's `policeUnit`, regardless of what the browser UI does or doesn't show.
+5. **Log in** on the login screen as usual — pick your unit, enter your officer name, and use the password from step 3 instead of a PIN. `index.html` auto-detects Live Mode from `firebaseConfig.apiKey` and switches the login flow (and the password-field label) accordingly; no further code changes are needed.
+
+Once Live Mode + real rules are in place, the "this is a client-side gate only" caveat in the rest of this README no longer applies.
