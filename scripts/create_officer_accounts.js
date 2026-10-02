@@ -13,6 +13,7 @@
  *
  * Setup:
  *   npm install firebase-admin
+ *   (written against firebase-admin's modular API, v12+ / v14 confirmed)
  *
  * Get a service account key:
  *   Firebase Console -> Project Settings -> Service Accounts
@@ -33,6 +34,9 @@
  * --------------------------------------------------------------------
  */
 const crypto = require("crypto");
+const path = require("path");
+const { initializeApp, cert } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
 
 const POLICE_UNITS = [
   "Chittoor","Tirupathi","YSR Kadapa","NTR Commissionerate","Annamayya","GRP Vijayawada",
@@ -63,8 +67,8 @@ async function main() {
     process.exit(1);
   }
 
-  const admin = require("firebase-admin");
-  admin.initializeApp({ credential: admin.credential.cert(require(require("path").resolve(keyPath))) });
+  initializeApp({ credential: cert(require(path.resolve(keyPath))) });
+  const auth = getAuth();
 
   const accounts = [
     { unit: HQ_UNIT_NAME, role: "hq_admin" },
@@ -78,19 +82,19 @@ async function main() {
     let user;
     let password = null;
     try {
-      user = await admin.auth().getUserByEmail(email);
+      user = await auth.getUserByEmail(email);
       if (resetPasswords) {
         password = genPassword();
-        await admin.auth().updateUser(user.uid, { password });
+        await auth.updateUser(user.uid, { password });
       }
     } catch (e) {
       if (e.code !== "auth/user-not-found") throw e;
       password = genPassword();
-      user = await admin.auth().createUser({ email, password, emailVerified: true, disabled: false });
+      user = await auth.createUser({ email, password, emailVerified: true, disabled: false });
     }
 
     const claims = role === "hq_admin" ? { role: "hq_admin" } : { role: "field", unit };
-    await admin.auth().setCustomUserClaims(user.uid, claims);
+    await auth.setCustomUserClaims(user.uid, claims);
 
     results.push({ unit, email, password, status: password ? "created/reset" : "already existed (claims refreshed)" });
   }
