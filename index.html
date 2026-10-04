@@ -566,7 +566,17 @@ function startRealtimeSync(onChange){
     onChange(WARRANTS);
     return;
   }
-  unsubscribeFn = db.collection(COLLECTION_NAME).onSnapshot(snap => {
+  // Firestore only allows a *list* query (as opposed to a single-document
+  // get) when the query itself is provably restricted to documents the
+  // caller's security-rule token can read -- it never falls back to
+  // "fetch everything, then filter." Our rules let a field unit read only
+  // documents where policeUnit == their own unit, so a field session MUST
+  // query with that same where() clause, or Firestore rejects the whole
+  // query with permission-denied. HQ admin's rule doesn't depend on
+  // resource.data, so an unscoped query is fine for that role.
+  const base = db.collection(COLLECTION_NAME);
+  const query = isAdminSession() ? base : base.where("policeUnit", "==", SESSION.unit);
+  unsubscribeFn = query.onSnapshot(snap => {
     WARRANTS = snap.docs.map(d => normalizeRecord(d.id, d.data()));
     onChange(WARRANTS);
   }, err => {
@@ -1172,6 +1182,11 @@ async function handleSeed(){
 }
 
 async function autoSeedIfEmpty(){
+  // Only HQ admin's token satisfies the security rules for an unscoped
+  // collection read/check -- skip entirely for field sessions instead of
+  // generating a guaranteed, harmless-but-noisy permission-denied on
+  // every field login.
+  if (!isAdminSession()) return;
   try {
     const empty = await isCollectionEmpty();
     if (empty) {
