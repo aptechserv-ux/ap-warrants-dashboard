@@ -341,6 +341,11 @@
               <label class="text-xs font-semibold text-dim">Police Unit <span class="text-rose-500">*</span></label>
               <select id="af_policeUnit" required class="w-full mt-1 px-3 py-2 rounded-lg text-sm"></select>
             </div>
+            <div>
+              <label class="text-xs font-semibold text-dim">Range</label>
+              <input id="af_range" type="text" readonly class="w-full mt-1 px-3 py-2 rounded-lg text-sm opacity-70 cursor-not-allowed" />
+              <p class="text-dim text-[11px] mt-1">Set automatically from the Police Unit.</p>
+            </div>
             <div id="add-grp-identity-rest" class="contents"></div>
           </div>
         </div>
@@ -569,12 +574,49 @@ const OPTS = {
   gender: ["Male","Female","Others"]
 };
 
+// Every unit in the real CCTNS export maps to exactly one Range (no unit
+// has ever had two) -- so on Add Warrant, Range is derived from the chosen
+// Police Unit instead of being free-typed, which is how a typo'd/misspelled
+// Range value would otherwise sneak into the data.
+const UNIT_RANGE = {
+  "NTR Commissionerate": "-",
+  "Visakhapatnam Commissionerate": "-",
+  "Ananthapuram": "Dig, Ananthapur Range",
+  "Annamayya": "Dig, Kurnool Range",
+  "Chittoor": "Dig, Ananthapur Range",
+  "Sri Potti Sriramulu Nellore": "Igp, Guntur Range",
+  "Sri Sathya Sai": "Dig, Ananthapur Range",
+  "Tirupathi": "Dig, Ananthapur Range",
+  "Dr. B R Ambedkar Konaseema": "Dig, Eluru Range",
+  "East Godavari": "Dig, Eluru Range",
+  "Eluru": "Dig, Eluru Range",
+  "Kakinada": "Dig, Eluru Range",
+  "Krishna": "Dig, Eluru Range",
+  "West Godavari": "Dig, Eluru Range",
+  "Kurnool": "Dig, Kurnool Range",
+  "Nandyal": "Dig, Kurnool Range",
+  "YSR Kadapa": "Dig, Kurnool Range",
+  "GRP Guntakal": "Dig, Railways",
+  "GRP Vijayawada": "Dig, Railways",
+  "Alluri Sitharama Raju": "Dig, Visakhapatnam Range",
+  "Anakapalli": "Dig, Visakhapatnam Range",
+  "Parvathipuram Manyam": "Dig, Visakhapatnam Range",
+  "Polavaram": "Dig, Visakhapatnam Range",
+  "Srikakulam": "Dig, Visakhapatnam Range",
+  "Vizianagaram": "Dig, Visakhapatnam Range",
+  "Bapatla": "Igp, Guntur Range",
+  "Guntur": "Igp, Guntur Range",
+  "Markapuram": "Igp, Guntur Range",
+  "Palnadu": "Igp, Guntur Range",
+  "Prakasam": "Igp, Guntur Range"
+};
+
 // Core case-identity fields for a brand-new warrant that isn't in the CCTNS
 // export yet (the existing EDIT_GROUPS only cover investigation-progress
 // fields, since those are the only ones a unit can change on an existing
 // CCTNS-sourced record).
 const IDENTITY_FIELDS = [
-  "range","policeStation","crimeNoYear","cctnsId","court","courtCaseNo",
+  "policeStation","crimeNoYear","cctnsId","court","courtCaseNo",
   "warrantType","warrantNo","warrantDate","sectionsOfLaw","categoryOfCase",
   "nameOfPerson","alias","fatherSpouseName","dobAge","gender","mobileNo",
   "originalAddress","addressStateUT","addressDistrict","addressPS"
@@ -1226,6 +1268,11 @@ function makeTempId(unit){
   return `NEW-${code}-${suffix}`;
 }
 
+function syncAddRangeField(){
+  const unit = document.getElementById("af_policeUnit").value;
+  document.getElementById("af_range").value = UNIT_RANGE[unit] || "-";
+}
+
 function openAddWarrantModal(){
   if (!SESSION) return;
   const form = document.getElementById("addWarrantForm");
@@ -1238,6 +1285,7 @@ function openAddWarrantModal(){
     unitSel.value = SESSION.unit;
     unitSel.disabled = true;
   }
+  syncAddRangeField();
 
   document.getElementById("addWarrantModal").classList.remove("hidden");
   lucide.createIcons();
@@ -1291,6 +1339,7 @@ async function handleAddWarrantSubmit(){
   fields.remarks = document.getElementById("af_remarks").value;
 
   fields.policeUnit = unit;
+  fields.range = document.getElementById("af_range").value;
   fields.slNo = null;                 // not part of the official CCTNS numbering
   fields.locallyAdded = true;         // flags this as unit-entered, not from the CCTNS export
   fields.addedByUnit = SESSION.unit;
@@ -1682,6 +1731,7 @@ function wireEvents(){
   document.getElementById("changePasswordModal").addEventListener("click", (e) => { if (e.target.id === "changePasswordModal") closeChangePasswordModal(); });
 
   document.getElementById("addWarrantBtn").addEventListener("click", openAddWarrantModal);
+  document.getElementById("af_policeUnit").addEventListener("change", syncAddRangeField);
   document.getElementById("closeAddModal").addEventListener("click", closeAddWarrantModal);
   document.getElementById("cancelAdd").addEventListener("click", closeAddWarrantModal);
   document.getElementById("saveAdd").addEventListener("click", handleAddWarrantSubmit);
