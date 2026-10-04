@@ -3,3 +3,4 @@ package-lock.json
 package.json
 service-account*.json
 *.local.json
+diag_batch2.js

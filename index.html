@@ -1510,7 +1510,7 @@ function wireEvents(){
       const claims = idTokenResult.claims || {};
       const effectiveRole = claims.role === "hq_admin" ? "hq_admin" : "field";
       const effectiveUnit = effectiveRole === "hq_admin" ? HQ_UNIT_NAME : (claims.unit || "Unassigned");
-      const officer = (SESSION && SESSION.officer) || loadSession()?.officer || user.email;
+      const officer = (SESSION && SESSION.officer) || loadSession()?.officer || (effectiveRole === "hq_admin" ? "State HQ Admin" : `${effectiveUnit} Officer`);
       saveSession({ unit: effectiveUnit, role: effectiveRole, officer, uid: user.uid, loginAt: new Date().toISOString() });
       hideLoginOverlay();
       renderSessionBadge();
