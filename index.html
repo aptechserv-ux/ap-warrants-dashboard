@@ -87,6 +87,9 @@
         <button id="seedBtn" class="hidden items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80 transition">
           <i data-lucide="database" class="w-4 h-4"></i> Seed Database
         </button>
+        <button id="addWarrantBtn" class="hidden items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white" style="background:var(--accent)">
+          <i data-lucide="plus" class="w-4 h-4"></i> Add Warrant
+        </button>
         <button id="exportBtn" class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80 transition">
           <i data-lucide="file-down" class="w-4 h-4"></i> Export CSV
         </button>
@@ -318,6 +321,69 @@
   </div>
 </div>
 
+<!-- ===================== ADD NEW WARRANT MODAL ===================== -->
+<div id="addWarrantModal" class="fixed inset-0 modal-backdrop hidden z-50 flex items-center justify-center p-3">
+  <div class="surface rounded-xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-c sticky top-0 surface z-10">
+      <div>
+        <h3 class="font-bold text-base">Add New Warrant</h3>
+        <p class="text-dim text-xs">For a warrant not yet in the statewide CCTNS export. Fill in what you know now -- CCTNS ID and other fields can be completed later.</p>
+      </div>
+      <button id="closeAddModal" class="w-8 h-8 rounded-lg surface-2 border border-c flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+
+    <div class="p-5">
+      <form id="addWarrantForm" class="space-y-6">
+        <div>
+          <h4 class="font-semibold text-sm mb-3 flex items-center gap-2" style="color:var(--accent)"><i data-lucide="id-card" class="w-4 h-4"></i>Case Identity</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs font-semibold text-dim">Police Unit <span class="text-rose-500">*</span></label>
+              <select id="af_policeUnit" required class="w-full mt-1 px-3 py-2 rounded-lg text-sm"></select>
+            </div>
+            <div id="add-grp-identity-rest" class="contents"></div>
+          </div>
+        </div>
+        <div>
+          <h4 class="font-semibold text-sm mb-3 flex items-center gap-2 text-amber-500"><i data-lucide="map-pin" class="w-4 h-4"></i>Address Verification &amp; Tracing</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="add-grp-address"></div>
+        </div>
+        <div>
+          <h4 class="font-semibold text-sm mb-3 flex items-center gap-2 text-blue-500"><i data-lucide="satellite-dish" class="w-4 h-4"></i>Technology &amp; Database Checks (NATGRID / CCTNS)</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="add-grp-tech"></div>
+        </div>
+        <div>
+          <h4 class="font-semibold text-sm mb-3 flex items-center gap-2 text-purple-500"><i data-lucide="crosshair" class="w-4 h-4"></i>Current Location &amp; Execution Planning</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="add-grp-location"></div>
+        </div>
+        <div>
+          <h4 class="font-semibold text-sm mb-3 flex items-center gap-2 text-emerald-500"><i data-lucide="users-round" class="w-4 h-4"></i>Team Deployment &amp; Execution Status</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="add-grp-exec"></div>
+        </div>
+        <div>
+          <h4 class="font-semibold text-sm mb-3 flex items-center gap-2 text-rose-500"><i data-lucide="gavel" class="w-4 h-4"></i>Court Compliance Log</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="add-grp-court"></div>
+        </div>
+        <div>
+          <h4 class="font-semibold text-sm mb-3 flex items-center gap-2"><i data-lucide="clipboard-list" class="w-4 h-4"></i>Next Action &amp; Accountability</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="add-grp-action"></div>
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-dim">Remarks</label>
+          <textarea id="af_remarks" rows="2" class="w-full mt-1 px-3 py-2 rounded-lg text-sm"></textarea>
+        </div>
+      </form>
+    </div>
+
+    <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-c sticky bottom-0 surface">
+      <button id="cancelAdd" class="px-4 py-2 rounded-lg text-sm font-semibold border border-c surface-2">Cancel</button>
+      <button id="saveAdd" class="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style="background:var(--accent)">
+        <i data-lucide="save" class="w-4 h-4"></i> Save New Warrant
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <!-- ===================== CHANGE PASSWORD MODAL ===================== -->
 <div id="changePasswordModal" class="fixed inset-0 modal-backdrop hidden z-[70] flex items-center justify-center p-3">
@@ -498,8 +564,21 @@ const OPTS = {
   reportFiledBeforeCourt: ["Yes","No"],
   shoVerification: ["Yes","No"],
   unitNodalOfficerVerification: ["Yes","No"],
-  cctnsSearchConducted: ["Yes","No"]
+  cctnsSearchConducted: ["Yes","No"],
+  warrantType: ["Non Bailable","Bailable","LPC"],
+  gender: ["Male","Female","Others"]
 };
+
+// Core case-identity fields for a brand-new warrant that isn't in the CCTNS
+// export yet (the existing EDIT_GROUPS only cover investigation-progress
+// fields, since those are the only ones a unit can change on an existing
+// CCTNS-sourced record).
+const IDENTITY_FIELDS = [
+  "range","policeStation","crimeNoYear","cctnsId","court","courtCaseNo",
+  "warrantType","warrantNo","warrantDate","sectionsOfLaw","categoryOfCase",
+  "nameOfPerson","alias","fatherSpouseName","dobAge","gender","mobileNo",
+  "originalAddress","addressStateUT","addressDistrict","addressPS"
+];
 
 // Editable field groups shown in the modal (live field-unit updates)
 const EDIT_GROUPS = {
@@ -933,7 +1012,7 @@ function renderMasterTable(){
 
   document.getElementById("masterTbody").innerHTML = pageRows.map(w => `
     <tr class="border-t border-c hover:bg-black/5 dark:hover:bg-white/5">
-      <td class="py-2 px-3">${escapeHtml(w.slNo)}</td>
+      <td class="py-2 px-3">${w.locallyAdded ? '<span class="badge bg-blue-500/15 text-blue-500" title="Added directly in-app, not from the CCTNS export">New</span>' : escapeHtml(w.slNo)}</td>
       <td class="py-2 px-3">${escapeHtml(w.policeUnit)}</td>
       <td class="py-2 px-3">${escapeHtml(w.policeStation)}</td>
       <td class="py-2 px-3">${escapeHtml(w.crimeNoYear)}</td>
@@ -1023,21 +1102,22 @@ function syncFilterInputsFromState(){
 /* ---------------------------------------------------------------------
    11. EDIT MODAL
    --------------------------------------------------------------------- */
-function fieldInputHTML(key){
+function fieldInputHTML(key, prefix){
+  prefix = prefix || "f";
   const label = FIELD_LABEL[key] || key;
-  const val = "";
   if (OPTS[key]) {
     return `<div>
       <label class="text-xs font-semibold text-dim">${label}</label>
-      <select id="f_${key}" class="w-full mt-1 px-3 py-2 rounded-lg text-sm">
+      <select id="${prefix}_${key}" class="w-full mt-1 px-3 py-2 rounded-lg text-sm">
         ${OPTS[key].map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("")}
       </select>
     </div>`;
   }
-  if (key === "currentProbableStateUT") {
+  if (key === "currentProbableStateUT" || key === "addressStateUT") {
     return `<div>
       <label class="text-xs font-semibold text-dim">${label}</label>
-      <select id="f_${key}" class="w-full mt-1 px-3 py-2 rounded-lg text-sm">
+      <select id="${prefix}_${key}" class="w-full mt-1 px-3 py-2 rounded-lg text-sm">
+        <option value="">— Select —</option>
         ${INDIAN_STATES_UTS.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("")}
       </select>
     </div>`;
@@ -1045,13 +1125,13 @@ function fieldInputHTML(key){
   const isDate = /date|since/i.test(key) && key !== "warrantPendingSince";
   return `<div>
     <label class="text-xs font-semibold text-dim">${label}</label>
-    <input id="f_${key}" type="${isDate ? 'date' : 'text'}" class="w-full mt-1 px-3 py-2 rounded-lg text-sm" />
+    <input id="${prefix}_${key}" type="${isDate ? 'date' : 'text'}" class="w-full mt-1 px-3 py-2 rounded-lg text-sm" />
   </div>`;
 }
 
 function buildEditFormOnce(){
   Object.entries(EDIT_GROUPS).forEach(([grp, keys]) => {
-    document.getElementById("grp-" + grp).innerHTML = keys.map(fieldInputHTML).join("");
+    document.getElementById("grp-" + grp).innerHTML = keys.map(k => fieldInputHTML(k, "f")).join("");
   });
 }
 
@@ -1065,7 +1145,7 @@ function openEditModal(id){
   activeEditId = id;
 
   document.getElementById("modalTitle").textContent = `Update Warrant — ${w.nameOfPerson || ""}`;
-  document.getElementById("modalSubtitle").textContent = `CCTNS ID: ${w.cctnsId || "—"} · Crime No: ${w.crimeNoYear || "—"} · ${w.policeUnit || ""}`;
+  document.getElementById("modalSubtitle").textContent = `CCTNS ID: ${w.cctnsId || (w.locallyAdded ? `${w.tempId || "—"} (locally added, pending CCTNS ID)` : "—")} · Crime No: ${w.crimeNoYear || "—"} · ${w.policeUnit || ""}`;
 
   const snapshotFields = ["policeUnit","policeStation","court","courtCaseNo","warrantType","warrantDate","sectionsOfLaw","categoryOfCase","fatherSpouseName","originalAddress"];
   document.getElementById("modalSnapshot").innerHTML = snapshotFields.map(k => `
@@ -1120,6 +1200,120 @@ async function saveEdit(){
     toast("Failed to save: " + e.message, "error");
   } finally {
     btn.disabled = false; btn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i> Save to Database`; lucide.createIcons();
+  }
+}
+
+/* ---------------------------------------------------------------------
+   11b. ADD NEW WARRANT (for cases not yet in the CCTNS export)
+   --------------------------------------------------------------------- */
+function buildAddFormOnce(){
+  document.getElementById("af_policeUnit").innerHTML = POLICE_UNITS
+    .map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("");
+  document.getElementById("add-grp-identity-rest").innerHTML =
+    IDENTITY_FIELDS.map(k => fieldInputHTML(k, "af")).join("");
+  Object.entries(EDIT_GROUPS).forEach(([grp, keys]) => {
+    document.getElementById("add-grp-" + grp).innerHTML = keys.map(k => fieldInputHTML(k, "af")).join("");
+  });
+}
+
+// A short, human-readable stand-in ID for a warrant logged before CCTNS has
+// issued one -- also used as the Firestore document ID, so it needs no
+// collision check against the scrambled CCTNS-derived IDs (different
+// prefix, different alphabet).
+function makeTempId(unit){
+  const code = String(unit || "UNIT").replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase() || "UNIT";
+  const suffix = (Date.now().toString(36) + Math.random().toString(36).slice(2, 5)).toUpperCase().slice(-7);
+  return `NEW-${code}-${suffix}`;
+}
+
+function openAddWarrantModal(){
+  if (!SESSION) return;
+  const form = document.getElementById("addWarrantForm");
+  form.querySelectorAll("input, select, textarea").forEach(el => { if (el.id !== "af_policeUnit") el.value = ""; });
+
+  const unitSel = document.getElementById("af_policeUnit");
+  if (isAdminSession()) {
+    unitSel.disabled = false;
+  } else {
+    unitSel.value = SESSION.unit;
+    unitSel.disabled = true;
+  }
+
+  document.getElementById("addWarrantModal").classList.remove("hidden");
+  lucide.createIcons();
+}
+
+function closeAddWarrantModal(){
+  document.getElementById("addWarrantModal").classList.add("hidden");
+}
+
+async function addWarrantRecord(id, fields){
+  if (DEMO_MODE || !db) {
+    const all = LocalStore.all();
+    all.push(Object.assign({ id }, fields));
+    LocalStore.save(all);
+    WARRANTS = all.map(r => normalizeRecord(r.id, r));
+    renderAll();
+    return;
+  }
+  // A plain create (not merge) -- this ID has never been used before.
+  await db.collection(COLLECTION_NAME).doc(id).set(fields);
+}
+
+async function handleAddWarrantSubmit(){
+  if (!SESSION) return;
+
+  const unit = document.getElementById("af_policeUnit").value;
+  if (!isAdminSession() && unit !== SESSION.unit) {
+    toast("You can only add warrants for your own unit.", "error");
+    return;
+  }
+  const nameOfPerson = document.getElementById("af_nameOfPerson").value.trim();
+  if (!nameOfPerson) {
+    toast("Name of Person is required.", "error");
+    return;
+  }
+
+  // Start every field at "" so the record always has the full 66-column
+  // shape (table rendering, CSV export, and filters all assume every key
+  // exists), then fill in whatever the form actually collected.
+  const fields = {};
+  FIELDS.forEach(([k]) => { fields[k] = ""; });
+
+  IDENTITY_FIELDS.forEach(k => {
+    const el = document.getElementById("af_" + k);
+    if (el) fields[k] = el.value;
+  });
+  Object.values(EDIT_GROUPS).flat().forEach(k => {
+    const el = document.getElementById("af_" + k);
+    if (el) fields[k] = el.value;
+  });
+  fields.remarks = document.getElementById("af_remarks").value;
+
+  fields.policeUnit = unit;
+  fields.slNo = null;                 // not part of the official CCTNS numbering
+  fields.locallyAdded = true;         // flags this as unit-entered, not from the CCTNS export
+  fields.addedByUnit = SESSION.unit;
+  fields.addedByOfficer = SESSION.officer;
+  fields.addedAt = new Date().toISOString();
+  fields.lastUpdatedAt = fields.addedAt;
+  fields.lastUpdatedByUnit = SESSION.unit;
+  fields.lastUpdatedByOfficer = SESSION.officer;
+
+  const tempId = makeTempId(unit);
+  if (!fields.cctnsId) fields.tempId = tempId;
+
+  const btn = document.getElementById("saveAdd");
+  btn.disabled = true; btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Saving…`; lucide.createIcons();
+  try {
+    await addWarrantRecord(tempId, fields);
+    toast(`New warrant for ${nameOfPerson} added.`);
+    closeAddWarrantModal();
+  } catch (err) {
+    console.error(err);
+    toast("Failed to save: " + err.message, "error");
+  } finally {
+    btn.disabled = false; btn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i> Save New Warrant`; lucide.createIcons();
   }
 }
 
@@ -1247,6 +1441,11 @@ function renderSessionBadge(){
   const cpBtn = document.getElementById("changePasswordBtn");
   cpBtn.classList.toggle("hidden", DEMO_MODE);
   cpBtn.classList.toggle("flex", !DEMO_MODE);
+  // Any signed-in unit (field or admin) can log a warrant that isn't in the
+  // CCTNS export yet.
+  const addBtn = document.getElementById("addWarrantBtn");
+  addBtn.classList.remove("hidden");
+  addBtn.classList.add("flex");
   lucide.createIcons();
 }
 
@@ -1481,6 +1680,12 @@ function wireEvents(){
   document.getElementById("closeChangePassword").addEventListener("click", closeChangePasswordModal);
   document.getElementById("changePasswordForm").addEventListener("submit", handleChangePassword);
   document.getElementById("changePasswordModal").addEventListener("click", (e) => { if (e.target.id === "changePasswordModal") closeChangePasswordModal(); });
+
+  document.getElementById("addWarrantBtn").addEventListener("click", openAddWarrantModal);
+  document.getElementById("closeAddModal").addEventListener("click", closeAddWarrantModal);
+  document.getElementById("cancelAdd").addEventListener("click", closeAddWarrantModal);
+  document.getElementById("saveAdd").addEventListener("click", handleAddWarrantSubmit);
+  document.getElementById("addWarrantModal").addEventListener("click", (e) => { if (e.target.id === "addWarrantModal") closeAddWarrantModal(); });
 }
 
 /* ---------------------------------------------------------------------
@@ -1490,6 +1695,7 @@ function wireEvents(){
   lucide.createIcons();
   initTheme();
   buildEditFormOnce();
+  buildAddFormOnce();
   buildLoginUnitOptions();
   wireEvents();
 

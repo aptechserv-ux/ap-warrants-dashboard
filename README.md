@@ -54,6 +54,7 @@ Police Unit values match the **current (post-2022 reorganization)** CCTNS unit l
 - **Warrant Master Data** — searchable, filterable, paginated (25/page) register. Field units see only their own unit's warrants; **IGP Technical Services HQ** (or the "State HQ Admin" login role) sees and can seed the full statewide dataset.
 - **State Deployment & Clustering** — inter-state warrants auto-grouped by destination State/UT, to help stand up dedicated execution teams.
 - **Export CSV** — exports the currently filtered rows in the full proforma column order, plus the audit-trail columns.
+- **Add Warrant** — any signed-in unit can log a warrant that isn't in the CCTNS export yet (e.g. a case the unit knows about before CCTNS has issued a record for it). Field units can only add for their own unit; the police-unit field is auto-filled and locked. A warrant added this way gets a short stand-in ID (e.g. `NEW-CHIT-7K2PQ1`) instead of a CCTNS ID until one is filled in, and is marked with a blue "New" badge in the Sl. No. column until then.
 
 ## Authentication & server-enforced access (recommended before real deployment)
 
@@ -81,7 +82,8 @@ Login in this app has two modes:
        match /warrants/{warrantId} {
          allow read: if request.auth != null &&
            (request.auth.token.role == 'hq_admin' || request.auth.token.unit == resource.data.policeUnit);
-         allow create: if request.auth != null && request.auth.token.role == 'hq_admin';
+         allow create: if request.auth != null &&
+           (request.auth.token.role == 'hq_admin' || request.auth.token.unit == request.resource.data.policeUnit);
          allow update: if request.auth != null &&
            (request.auth.token.role == 'hq_admin' || request.auth.token.unit == resource.data.policeUnit);
          allow delete: if request.auth != null && request.auth.token.role == 'hq_admin';
@@ -89,13 +91,15 @@ Login in this app has two modes:
      }
    }
    ```
-   This is what actually closes the gap: a field officer's requests are rejected by Firestore itself if `request.auth.token.unit` doesn't match the record's `policeUnit`, regardless of what the browser UI does or doesn't show.
+   This is what actually closes the gap: a field officer's requests are rejected by Firestore itself if `request.auth.token.unit` doesn't match the record's `policeUnit`, regardless of what the browser UI does or doesn't show. The `create` rule uses `request.resource.data.policeUnit` (the document *being written*) rather than `resource.data` (which doesn't exist yet on a brand-new document) -- this is what lets a field unit use "Add Warrant" in the app to log a new warrant for its own jurisdiction, while still blocking it from creating one tagged to a different unit.
+
+   **If you already pasted the original version of these rules in before this update**, go back to Console → Firestore Database → Rules and replace the `allow create` line with the one above -- otherwise "Add Warrant" will fail with a permission-denied error for every field-unit login (HQ Admin is unaffected either way, since its rule never depended on `policeUnit`).
 5. **Log in** on the login screen as usual — pick your unit, enter your officer name, and use the password from step 3 instead of a PIN. `index.html` auto-detects Live Mode from `firebaseConfig.apiKey` and switches the login flow (and the password-field label) accordingly; no further code changes are needed.
 
 Once Live Mode + real rules are in place, the "this is a client-side gate only" caveat in the rest of this README no longer applies.
 
 ### Changing a unit's password
 
-The 16-character generated passwords from `create_officer_accounts.js` are secure but not meant to be memorized day-to-day. Once signed in, click **Change Password** in the header to set a memorable one for your unit (minimum 6 characters — a passphrase like `ChittoorWarrants2026` is fine). This changes the real Firebase Auth password for that unit's shared account; re-share the new password with your unit's officers the same way you shared the original one. "Username" (the login email, e.g. `chittoor@ap-warrants.local`) is fixed per unit by design, since that's what Firestore's rules match against — only the password is changeable.
+The 16-character generated passwords from `create_officer_accounts.js` are secure but not meant to be memorized day-to-day. Once signed in, click **Change Password** in the header to set a memorable one for your unit (at least 8 characters, with an uppercase letter, a lowercase letter, a number, and a symbol — a passphrase like `Chittoor@Warrants2026` is fine). This changes the real Firebase Auth password for that unit's shared account; re-share the new password with your unit's officers the same way you shared the original one. "Username" (the login email, e.g. `chittoor@ap-warrants.local`) is fixed per unit by design, since that's what Firestore's rules match against — only the password is changeable.
 
 If a unit ever forgets its password entirely, re-run the provisioning script with `--reset-passwords` to generate (and print) a fresh one for every unit.
