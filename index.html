@@ -237,18 +237,6 @@
       </div>
 
       <div>
-        <label class="text-xs font-semibold text-dim block mb-1.5">Login As</label>
-        <div class="grid grid-cols-2 gap-2">
-          <label class="surface-2 rounded-lg px-3 py-2.5 flex items-center gap-2 cursor-pointer text-sm">
-            <input type="radio" name="loginRole" value="field" checked /> Field Unit
-          </label>
-          <label class="surface-2 rounded-lg px-3 py-2.5 flex items-center gap-2 cursor-pointer text-sm">
-            <input type="radio" name="loginRole" value="hq_admin" /> State HQ Admin
-          </label>
-        </div>
-      </div>
-
-      <div>
         <label class="text-xs font-semibold text-dim">Officer Name / Badge No.</label>
         <input id="loginOfficer" type="text" required placeholder="e.g. SI K. Ramesh / Badge No. 4521" class="w-full mt-1 px-3 py-2.5 rounded-lg text-sm" />
       </div>
@@ -346,8 +334,8 @@
       </div>
       <div>
         <label class="text-xs font-semibold text-dim">New Password</label>
-        <input id="cpNew" type="password" required minlength="6" class="w-full mt-1 px-3 py-2 rounded-lg text-sm" />
-        <p class="text-dim text-[11px] mt-1">At least 6 characters. A memorable passphrase (e.g. "ChittoorWarrants2026") is fine and stronger than it looks.</p>
+        <input id="cpNew" type="password" required minlength="8" class="w-full mt-1 px-3 py-2 rounded-lg text-sm" />
+        <p class="text-dim text-[11px] mt-1">At least 8 characters, with an uppercase letter, a lowercase letter, a number, and a symbol. A passphrase like "Chittoor@Warrants2026" meets this easily.</p>
       </div>
       <div>
         <label class="text-xs font-semibold text-dim">Confirm New Password</label>
@@ -441,6 +429,14 @@ const HQ_ADMIN_PIN = "9999";
 // account's login email; the *password* is never stored here — it lives
 // only in Firebase Auth, entered by the officer at login.
 function slugUnit(u){ return String(u).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,""); }
+function passwordComplexityError(pw){
+  if (pw.length < 8) return "New password must be at least 8 characters.";
+  if (!/[a-z]/.test(pw)) return "New password must include a lowercase letter.";
+  if (!/[A-Z]/.test(pw)) return "New password must include an uppercase letter.";
+  if (!/[0-9]/.test(pw)) return "New password must include a number.";
+  if (!/[^A-Za-z0-9]/.test(pw)) return "New password must include a symbol (e.g. @ # ! -).";
+  return null;
+}
 function authEmailFor(unit, role){
   return role === "hq_admin" ? "hq-admin@ap-warrants.local" : `${slugUnit(unit)}@ap-warrants.local`;
 }
@@ -1205,9 +1201,11 @@ async function autoSeedIfEmpty(){
 /* ---------------------------------------------------------------------
    13b. LOGIN / SESSION UI
    --------------------------------------------------------------------- */
+const HQ_ADMIN_OPTION_VALUE = "__HQ_ADMIN__";
 function buildLoginUnitOptions(){
   const sel = document.getElementById("loginUnit");
-  sel.innerHTML = POLICE_UNITS.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("");
+  sel.innerHTML = POLICE_UNITS.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("")
+    + `<option value="${HQ_ADMIN_OPTION_VALUE}">— State HQ Admin (${escapeHtml(HQ_UNIT_NAME)}) —</option>`;
 }
 
 function showLoginOverlay(){
@@ -1271,7 +1269,8 @@ async function handleChangePassword(e){
   const errEl = document.getElementById("cpError");
   const showError = (msg) => { errEl.classList.remove("hidden"); errEl.querySelector("span").textContent = msg; lucide.createIcons(); };
 
-  if (next.length < 6) { showError("New password must be at least 6 characters."); return; }
+  const complexityError = passwordComplexityError(next);
+  if (complexityError) { showError(complexityError); return; }
   if (next !== confirm) { showError("New password and confirmation don't match."); return; }
 
   const user = auth.currentUser;
@@ -1329,8 +1328,9 @@ function completeLogin(sessionData, officer){
 
 async function handleLoginSubmit(e){
   e.preventDefault();
-  const unit = document.getElementById("loginUnit").value;
-  const role = document.querySelector('input[name="loginRole"]:checked').value;
+  const selected = document.getElementById("loginUnit").value;
+  const role = selected === HQ_ADMIN_OPTION_VALUE ? "hq_admin" : "field";
+  const unit = role === "hq_admin" ? HQ_UNIT_NAME : selected;
   const officer = document.getElementById("loginOfficer").value.trim();
   const pin = document.getElementById("loginPin").value.trim();
   const errEl = document.getElementById("loginError");
