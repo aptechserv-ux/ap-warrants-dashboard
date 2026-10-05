@@ -55,6 +55,7 @@ Police Unit values match the **current (post-2022 reorganization)** CCTNS unit l
 - **State Deployment & Clustering** — inter-state warrants auto-grouped by destination State/UT, to help stand up dedicated execution teams.
 - **Export CSV** — exports the currently filtered rows in the full proforma column order, plus the audit-trail columns.
 - **Add Warrant** — any signed-in unit can log a warrant that isn't in the CCTNS export yet (e.g. a case the unit knows about before CCTNS has issued a record for it). Field units can only add for their own unit; the police-unit field is auto-filled and locked. A warrant added this way gets a short stand-in ID (e.g. `NEW-CHIT-7K2PQ1`) instead of a CCTNS ID until one is filled in, and is marked with a blue "New" badge in the Sl. No. column until then.
+- **Police Station dropdown** — on the Add Warrant form, Police Station is a dropdown (not free text) scoped to the selected Police Unit, so a field officer can't accidentally create a near-duplicate station name by typo (e.g. "Town PS" vs "Town P.S." ending up as two different stations). It's auto-populated from every station already present in that unit's existing records. Only **State HQ Admin** can add a brand-new station that has no warrant yet, via the **Manage Police Stations** button in the header (visible to HQ Admin only) — it then appears in the dropdown for that unit immediately, for everyone.
 
 ## Authentication & server-enforced access (recommended before real deployment)
 
@@ -90,12 +91,22 @@ Login in this app has two modes:
            (request.auth.token.role == 'hq_admin' || request.auth.token.unit == resource.data.policeUnit);
          allow delete: if request.auth != null && request.auth.token.role == 'hq_admin';
        }
+       match /policeStations/{stationId} {
+         // Every signed-in unit can read the master Police Station list (it's
+         // just station names, not case data), but only State HQ Admin can
+         // add to it -- this is what stops a field unit's typo from quietly
+         // becoming a second, slightly-misspelled station in the dropdown.
+         allow read: if request.auth != null;
+         allow create, update, delete: if request.auth != null && request.auth.token.role == 'hq_admin';
+       }
      }
    }
    ```
    This is what actually closes the gap: a field officer's requests are rejected by Firestore itself if `request.auth.token.unit` doesn't match the record's `policeUnit`, regardless of what the browser UI does or doesn't show. The `create` rule uses `request.resource.data.policeUnit` (the document *being written*) rather than `resource.data` (which doesn't exist yet on a brand-new document) -- this is what lets a field unit use "Add Warrant" in the app to log a new warrant for its own jurisdiction, while still blocking it from creating one tagged to a different unit.
 
    **If you already pasted the original version of these rules in before this update**, go back to Console → Firestore Database → Rules and replace the `allow create` line with the one above -- otherwise "Add Warrant" will fail with a permission-denied error for every field-unit login (HQ Admin is unaffected either way, since its rule never depended on `policeUnit`).
+
+   **If you already have rules deployed without the `policeStations` block** (added for the Police Station dropdown feature), add that block in too — without it, Live Mode will show an empty Police Station dropdown and "Manage Police Stations" will fail with a permission-denied error for everyone, including HQ Admin.
 5. **Log in** on the login screen as usual — pick your unit, enter your officer name, and use the password from step 3 instead of a PIN. `index.html` auto-detects Live Mode from `firebaseConfig.apiKey` and switches the login flow (and the password-field label) accordingly; no further code changes are needed.
 
 Once Live Mode + real rules are in place, the "this is a client-side gate only" caveat in the rest of this README no longer applies.

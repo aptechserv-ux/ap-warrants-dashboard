@@ -90,6 +90,9 @@
         <button id="addWarrantBtn" class="hidden items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white" style="background:var(--accent)">
           <i data-lucide="plus" class="w-4 h-4"></i> Add Warrant
         </button>
+        <button id="manageStationsBtn" class="hidden items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80 transition">
+          <i data-lucide="building-2" class="w-4 h-4"></i> Manage Police Stations
+        </button>
         <button id="exportBtn" class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80 transition">
           <i data-lucide="file-down" class="w-4 h-4"></i> Export CSV
         </button>
@@ -390,6 +393,38 @@
       <button id="saveAdd" class="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style="background:var(--accent)">
         <i data-lucide="save" class="w-4 h-4"></i> Save New Warrant
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MANAGE POLICE STATIONS MODAL (HQ Admin only) ===================== -->
+<div id="manageStationsModal" class="fixed inset-0 modal-backdrop hidden z-[65] flex items-center justify-center p-3">
+  <div class="surface rounded-xl w-full max-w-lg max-h-[88vh] overflow-y-auto">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-c sticky top-0 surface z-10">
+      <div>
+        <h3 class="font-bold text-base">Manage Police Stations</h3>
+        <p class="text-dim text-xs">Police Station is a dropdown everywhere in the app so units can't create near-duplicate names by typo. Add a brand-new station here once -- it then appears for everyone.</p>
+      </div>
+      <button id="closeManageStationsModal" class="w-8 h-8 rounded-lg surface-2 border border-c flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div>
+        <label class="text-xs font-semibold text-dim">Police Unit</label>
+        <select id="ms_unit" class="w-full mt-1 px-3 py-2 rounded-lg text-sm"></select>
+      </div>
+      <div class="flex gap-2 items-end">
+        <div class="flex-1">
+          <label class="text-xs font-semibold text-dim">New Police Station Name</label>
+          <input id="ms_newStation" type="text" placeholder="e.g. Town Police Station" class="w-full mt-1 px-3 py-2 rounded-lg text-sm" />
+        </div>
+        <button id="ms_addBtn" class="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-1.5 whitespace-nowrap" style="background:var(--accent)">
+          <i data-lucide="plus" class="w-4 h-4"></i> Add
+        </button>
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-dim mb-2">Existing stations for this unit (<span id="ms_count">0</span>)</div>
+        <div id="ms_list" class="text-sm space-y-1 max-h-64 overflow-y-auto border border-c rounded-lg p-2"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -782,6 +817,75 @@ async function seedDatabase(records, overwrite=false){
   return count;
 }
 
+/* ---------------------------------------------------------------------
+   3b. POLICE STATION MASTER LIST
+   Police Station is a dropdown everywhere in the app (see fieldInputHTML)
+   instead of free text, so units can't create near-duplicate station
+   names by typo (e.g. "Town PS" vs "Town P.S." ending up as two separate
+   stations in the data). The dropdown for a unit is the union of:
+     (a) every policeStation value already present in that unit's existing
+         warrant records (so nothing already in the data is ever hidden), and
+     (b) stations an HQ Admin has deliberately added in advance, via the
+         "Manage Police Stations" panel, for a station that has no warrant
+         yet (CUSTOM_STATIONS below, backed by its own Firestore collection
+         so it's independent of any particular warrant record).
+   Only HQ Admin can add to (b) -- field units only ever pick from the list.
+   --------------------------------------------------------------------- */
+const STATIONS_COLLECTION = "policeStations";
+let CUSTOM_STATIONS = {};   // { "<Unit Name>": ["Station A", "Station B", ...] }
+
+const StationStore = {
+  key: "ap_warrants_demo_stations_v1",
+  all(){ try { return JSON.parse(localStorage.getItem(this.key)) || []; } catch(e){ return []; } },
+  save(arr){ localStorage.setItem(this.key, JSON.stringify(arr)); }
+};
+
+function rebuildCustomStationsFromDocs(docs){
+  const map = {};
+  docs.forEach(d => {
+    if (!d.unit || !d.name) return;
+    if (!map[d.unit]) map[d.unit] = [];
+    map[d.unit].push(d.name);
+  });
+  Object.keys(map).forEach(u => map[u].sort((a,b) => a.localeCompare(b)));
+  CUSTOM_STATIONS = map;
+}
+
+function startStationSync(onChange){
+  if (DEMO_MODE || !db) {
+    rebuildCustomStationsFromDocs(StationStore.all());
+    if (onChange) onChange();
+    return;
+  }
+  db.collection(STATIONS_COLLECTION).onSnapshot(snap => {
+    rebuildCustomStationsFromDocs(snap.docs.map(d => d.data()));
+    if (onChange) onChange();
+  }, err => {
+    console.error("Police station sync error:", err);
+  });
+}
+
+// Every station currently known for a unit: from existing warrant data,
+// plus any HQ-Admin-added stations that don't have a warrant yet.
+function stationsForUnit(unit){
+  if (!unit) return [];
+  const set = new Set(WARRANTS.filter(w => w.policeUnit === unit).map(w => w.policeStation).filter(Boolean));
+  (CUSTOM_STATIONS[unit] || []).forEach(s => set.add(s));
+  return Array.from(set).sort((a,b) => a.localeCompare(b));
+}
+
+async function addPoliceStation(unit, name){
+  const entry = { unit, name, addedBy: (SESSION && SESSION.officer) || "", addedAt: new Date().toISOString() };
+  if (DEMO_MODE || !db) {
+    const all = StationStore.all();
+    all.push(entry);
+    StationStore.save(all);
+    rebuildCustomStationsFromDocs(all);
+    return;
+  }
+  await db.collection(STATIONS_COLLECTION).add(entry);
+}
+
 async function updateWarrantFields(id, fields){
   if (DEMO_MODE || !db) {
     const all = LocalStore.all();
@@ -1158,6 +1262,19 @@ function syncFilterInputsFromState(){
 function fieldInputHTML(key, prefix){
   prefix = prefix || "f";
   const label = FIELD_LABEL[key] || key;
+  if (key === "policeStation") {
+    // Police Station is a dropdown, not free text, so field units can't
+    // introduce near-duplicate station names by typo (e.g. "Town PS" vs
+    // "Town P.S."). Options are filled in later by syncAddPoliceStationField()
+    // once the Police Unit is known -- see that function and stationsForUnit().
+    return `<div>
+      <label class="text-xs font-semibold text-dim">${label}</label>
+      <select id="${prefix}_${key}" class="w-full mt-1 px-3 py-2 rounded-lg text-sm">
+        <option value="">— Select Police Station —</option>
+      </select>
+      <p class="text-dim text-[11px] mt-1">Don't see your station? Ask your State HQ Admin to add it (Manage Police Stations).</p>
+    </div>`;
+  }
   if (OPTS[key]) {
     return `<div>
       <label class="text-xs font-semibold text-dim">${label}</label>
@@ -1284,6 +1401,20 @@ function syncAddRangeField(){
   document.getElementById("af_range").value = UNIT_RANGE[unit] || "-";
 }
 
+// Repopulates the Police Station dropdown for whichever Police Unit is
+// currently selected on the Add Warrant form, preserving the current
+// selection if it's still valid for the (possibly new) unit.
+function syncAddPoliceStationField(){
+  const unit = document.getElementById("af_policeUnit").value;
+  const sel = document.getElementById("af_policeStation");
+  if (!sel) return;
+  const current = sel.value;
+  const stations = stationsForUnit(unit);
+  sel.innerHTML = `<option value="">— Select Police Station —</option>` +
+    stations.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+  sel.value = stations.includes(current) ? current : "";
+}
+
 function openAddWarrantModal(){
   if (!SESSION) return;
   const form = document.getElementById("addWarrantForm");
@@ -1297,6 +1428,7 @@ function openAddWarrantModal(){
     unitSel.disabled = true;
   }
   syncAddRangeField();
+  syncAddPoliceStationField();
 
   document.getElementById("addWarrantModal").classList.remove("hidden");
   lucide.createIcons();
@@ -1304,6 +1436,61 @@ function openAddWarrantModal(){
 
 function closeAddWarrantModal(){
   document.getElementById("addWarrantModal").classList.add("hidden");
+}
+
+/* ---------------------------------------------------------------------
+   11c. MANAGE POLICE STATIONS (HQ Admin only)
+   --------------------------------------------------------------------- */
+function openManageStationsModal(){
+  if (!isAdminSession()) return;
+  const unitSel = document.getElementById("ms_unit");
+  unitSel.innerHTML = POLICE_UNITS.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("");
+  document.getElementById("ms_newStation").value = "";
+  renderManageStationsList();
+  document.getElementById("manageStationsModal").classList.remove("hidden");
+  lucide.createIcons();
+}
+
+function closeManageStationsModal(){
+  document.getElementById("manageStationsModal").classList.add("hidden");
+}
+
+function renderManageStationsList(){
+  const unit = document.getElementById("ms_unit").value;
+  const stations = stationsForUnit(unit);
+  document.getElementById("ms_count").textContent = stations.length;
+  document.getElementById("ms_list").innerHTML = stations.length
+    ? stations.map(s => `<div class="px-2 py-1 rounded surface-2">${escapeHtml(s)}</div>`).join("")
+    : `<div class="text-dim px-2 py-1">No stations recorded yet for this unit.</div>`;
+}
+
+async function handleAddStationSubmit(){
+  if (!isAdminSession()) return;
+  const unit = document.getElementById("ms_unit").value;
+  const name = document.getElementById("ms_newStation").value.trim();
+  if (!unit || !name) { toast("Pick a Police Unit and enter a station name.", "error"); return; }
+
+  const existing = stationsForUnit(unit);
+  if (existing.some(s => s.toLowerCase() === name.toLowerCase())) {
+    toast(`"${name}" already exists for ${unit} -- not adding a duplicate.`, "error");
+    return;
+  }
+
+  const btn = document.getElementById("ms_addBtn");
+  btn.disabled = true;
+  try {
+    await addPoliceStation(unit, name);
+    document.getElementById("ms_newStation").value = "";
+    renderManageStationsList();
+    // Keep the Add Warrant form's dropdown in sync if it's showing the same unit.
+    syncAddPoliceStationField();
+    toast(`Added "${name}" to ${unit}.`);
+  } catch (e) {
+    console.error(e);
+    toast("Failed to add station: " + e.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function addWarrantRecord(id, fields){
@@ -1499,6 +1686,11 @@ function renderSessionBadge(){
   // Only State HQ Admin can re-seed the statewide database.
   seedBtn.classList.toggle("hidden", !admin);
   seedBtn.classList.toggle("flex", admin);
+  // Only State HQ Admin can add new Police Stations to the master list --
+  // field units only ever pick from it (see fieldInputHTML/stationsForUnit).
+  const manageStationsBtn = document.getElementById("manageStationsBtn");
+  manageStationsBtn.classList.toggle("hidden", !admin);
+  manageStationsBtn.classList.toggle("flex", admin);
   // Changing a password only makes sense against a real Firebase Auth
   // account -- Demo Mode's PINs live in the page source, not an account.
   const cpBtn = document.getElementById("changePasswordBtn");
@@ -1565,6 +1757,16 @@ async function handleChangePassword(e){
   }
 }
 
+// Called whenever the Police Station master list changes (an HQ Admin add,
+// or the realtime listener's initial load) so any open form reflects it
+// immediately without the user needing to reopen it.
+function refreshStationDependentUI(){
+  const addModal = document.getElementById("addWarrantModal");
+  if (addModal && !addModal.classList.contains("hidden")) syncAddPoliceStationField();
+  const msModal = document.getElementById("manageStationsModal");
+  if (msModal && !msModal.classList.contains("hidden")) renderManageStationsList();
+}
+
 function completeLogin(sessionData, officer){
   saveSession(sessionData);
   hideLoginOverlay();
@@ -1581,6 +1783,7 @@ function completeLogin(sessionData, officer){
       setConnStatus("live", `Live · ${data.length} records`);
       renderAll();
     });
+    startStationSync(refreshStationDependentUI);
     autoSeedIfEmpty();
   } else {
     renderAll();
@@ -1747,6 +1950,12 @@ function wireEvents(){
 
   document.getElementById("addWarrantBtn").addEventListener("click", openAddWarrantModal);
   document.getElementById("af_policeUnit").addEventListener("change", syncAddRangeField);
+  document.getElementById("af_policeUnit").addEventListener("change", syncAddPoliceStationField);
+  document.getElementById("manageStationsBtn").addEventListener("click", openManageStationsModal);
+  document.getElementById("closeManageStationsModal").addEventListener("click", closeManageStationsModal);
+  document.getElementById("manageStationsModal").addEventListener("click", (e) => { if (e.target.id === "manageStationsModal") closeManageStationsModal(); });
+  document.getElementById("ms_unit").addEventListener("change", renderManageStationsList);
+  document.getElementById("ms_addBtn").addEventListener("click", handleAddStationSubmit);
   document.getElementById("closeAddModal").addEventListener("click", closeAddWarrantModal);
   document.getElementById("cancelAdd").addEventListener("click", closeAddWarrantModal);
   document.getElementById("saveAdd").addEventListener("click", handleAddWarrantSubmit);
@@ -1772,6 +1981,7 @@ function wireEvents(){
     if (SESSION) { hideLoginOverlay(); } else { showLoginOverlay(); }
     renderSessionBadge();
     startRealtimeSync((data) => { renderAll(); });
+    startStationSync(refreshStationDependentUI);
     isCollectionEmpty().then(empty => { if (empty) autoSeedIfEmpty(); });
     return;
   }
@@ -1805,6 +2015,7 @@ function wireEvents(){
         setConnStatus("live", `Live · ${data.length} records`);
         renderAll();
       });
+      startStationSync(refreshStationDependentUI);
       autoSeedIfEmpty();
     } catch (e) {
       console.error("Failed to restore session from Firebase Auth:", e);
