@@ -46,6 +46,17 @@
  * it's added to that list in this file AND to the POLICE_UNITS array in
  * index.html (which drives the login dropdown and jurisdiction scoping)
  * -- ask your developer/this assistant to add it, then re-run.
+ *
+ * To give a SECOND (or third, etc.) officer in the same unit their own
+ * separate login instead of sharing the unit's one password, add
+ * --login-id to a --unit command -- this creates an ADDITIONAL account
+ * for that unit with the same jurisdiction (same custom claims), under
+ * its own password, leaving the unit's original/primary login untouched:
+ *   node scripts/create_officer_accounts.js ./service-account.json --unit="Chittoor" --login-id="2"
+ * That officer then signs in picking Unit = Chittoor, Login ID = "2",
+ * plus the password this prints. Leaving Login ID blank at sign-in (the
+ * default for everyone) always means the unit's original account, so
+ * nobody who already has credentials is affected by adding more.
  * --------------------------------------------------------------------
  */
 const crypto = require("crypto");
@@ -65,8 +76,10 @@ const HQ_UNIT_NAME = "IGP Technical Services HQ";
 function slugUnit(u) {
   return String(u).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
-function emailFor(unit) {
-  return unit === HQ_UNIT_NAME ? "hq-admin@ap-warrants.local" : `${slugUnit(unit)}@ap-warrants.local`;
+function emailFor(unit, loginId) {
+  const base = unit === HQ_UNIT_NAME ? "hq-admin" : slugUnit(unit);
+  const suffix = loginId ? "-" + slugUnit(loginId) : "";
+  return `${base}${suffix}@ap-warrants.local`;
 }
 function genPassword() {
   // 16-char password from a URL-safe alphabet -- meets Firebase's 6-char
@@ -79,8 +92,14 @@ async function main() {
   const resetPasswords = process.argv.includes("--reset-passwords");
   const unitArg = process.argv.find((a) => a.startsWith("--unit="));
   const targetUnit = unitArg ? unitArg.slice("--unit=".length).trim() : null;
+  const loginIdArg = process.argv.find((a) => a.startsWith("--login-id="));
+  const loginId = loginIdArg ? loginIdArg.slice("--login-id=".length).trim() : null;
   if (!keyPath) {
-    console.error('Usage: node scripts/create_officer_accounts.js <service-account.json> [--reset-passwords] [--unit="Unit Name"]');
+    console.error('Usage: node scripts/create_officer_accounts.js <service-account.json> [--reset-passwords] [--unit="Unit Name"] [--login-id="id"]');
+    process.exit(1);
+  }
+  if (loginId && !targetUnit) {
+    console.error('--login-id requires --unit="<Unit Name>" (or --unit="HQ") to say which unit this extra login belongs to.');
     process.exit(1);
   }
 
@@ -107,7 +126,7 @@ async function main() {
   const results = [];
 
   for (const { unit, role } of accounts) {
-    const email = emailFor(unit);
+    const email = emailFor(unit, loginId);
     let user;
     let password = null;
     try {
@@ -125,7 +144,11 @@ async function main() {
     const claims = role === "hq_admin" ? { role: "hq_admin" } : { role: "field", unit };
     await auth.setCustomUserClaims(user.uid, claims);
 
-    results.push({ unit, email, password, status: password ? "created/reset" : "already existed (claims refreshed)" });
+    results.push({
+      unit: unit + (loginId ? ` (Login ID: ${loginId})` : ""),
+      email, password,
+      status: password ? "created/reset" : "already existed (claims refreshed)"
+    });
   }
 
   console.log("\nAccount provisioning complete.\n");
