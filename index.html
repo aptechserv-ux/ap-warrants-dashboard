@@ -745,6 +745,29 @@ function computeAgeing(w){
   return { days, bucket };
 }
 
+// A warrant whose NBW still needs action -- the two "open" stages of the
+// CCTNS execution-status pipeline. ">3/5/10 Years" ageing is meaningful
+// only for these; an executed/recalled/returned warrant isn't "pending"
+// no matter how old its warrant date is.
+function isPendingNBW(w){
+  return w.executionStatus === "NBWs yet to Entrust" || w.executionStatus === "NBWs Execution Pending";
+}
+
+// Turns a raw day count into "X yr Y mo" (or "Y mo", or "N days" for
+// anything under a month) instead of a bare, hard-to-read number like
+// "3009d". Still backed by the same ageingDays number everywhere that
+// number is used for sorting/filtering/KPIs -- this only changes display.
+function formatAgeing(days){
+  const n = Number(days);
+  if (!Number.isFinite(n) || n < 0) return "—";
+  const years = Math.floor(n / 365);
+  const months = Math.floor((n % 365) / 30);
+  if (years > 0 && months > 0) return `${years} yr ${months} mo`;
+  if (years > 0) return `${years} yr`;
+  if (months > 0) return `${months} mo`;
+  return `${n} day${n === 1 ? "" : "s"}`;
+}
+
 function normalizeRecord(id, data){
   const w = Object.assign({ id }, data);
   const ag = computeAgeing(w);
@@ -1030,9 +1053,12 @@ function renderKPIs(){
   const pendingInProgress = scope.filter(w => w.executionStatus === "NBWs Execution Pending" || w.executionStatus === "NBWs yet to Entrust").length;
   const notTraceable = scope.filter(w => w.untraceableEffortsRecorded === "Yes").length;
   const natgridPending = scope.filter(w => w.natgridVerificationRequired === "Yes" && w.natgridVerificationStatus === "Pending").length;
-  const over3 = scope.filter(w => w.ageingDays > 3*365).length;
-  const over5 = scope.filter(w => w.ageingDays > 5*365).length;
-  const over10 = scope.filter(w => w.ageingDays > 10*365).length;
+  // Scoped to pending NBWs only (yet to entrust / execution pending) --
+  // an executed, recalled, or returned-to-court warrant doesn't belong in
+  // an ageing-of-pending-work metric no matter how old its warrant date is.
+  const over3 = scope.filter(w => isPendingNBW(w) && w.ageingDays > 3*365).length;
+  const over5 = scope.filter(w => isPendingNBW(w) && w.ageingDays > 5*365).length;
+  const over10 = scope.filter(w => isPendingNBW(w) && w.ageingDays > 10*365).length;
   const courtReportFiled = scope.filter(w => w.reportFiledBeforeCourt === "Yes").length;
 
   // 10 KPI cards — matches the official Excel "State Dashboard" proforma exactly.
@@ -1043,9 +1069,9 @@ function renderKPIs(){
     { label:"Pending / In Progress", value:pendingInProgress, icon:"clock", color:"#0e7490" },
     { label:"Address Not Traceable", value:notTraceable, icon:"triangle-alert", color:"#be123c" },
     { label:"NATGRID Requested / Pending", value:natgridPending, icon:"satellite-dish", color:"#7c3aed" },
-    { label:">3 Years", value:over3, icon:"hourglass", color:"#b45309" },
-    { label:">5 Years", value:over5, icon:"hourglass", color:"#be123c" },
-    { label:">10 Years", value:over10, icon:"hourglass", color:"#9f1239" },
+    { label:">3 Years (Pending NBWs)", value:over3, icon:"hourglass", color:"#b45309" },
+    { label:">5 Years (Pending NBWs)", value:over5, icon:"hourglass", color:"#be123c" },
+    { label:">10 Years (Pending NBWs)", value:over10, icon:"hourglass", color:"#9f1239" },
     { label:"Court Report Filed", value:courtReportFiled, icon:"gavel", color:"#15803d" },
   ];
   document.getElementById("kpiGrid").innerHTML = cards.map(c => `
@@ -1071,7 +1097,7 @@ function renderKPIs(){
       <td class="py-2 pr-3 font-medium">${escapeHtml(w.nameOfPerson)}</td>
       <td class="py-2 pr-3 text-dim">${escapeHtml(w.policeUnit)}</td>
       <td class="py-2 pr-3">${escapeHtml(w.currentProbableStateUT)}</td>
-      <td class="py-2 pr-3">${w.ageingDays}d · ${escapeHtml(w.ageingBucket)}</td>
+      <td class="py-2 pr-3">${formatAgeing(w.ageingDays)} · ${escapeHtml(w.ageingBucket)}</td>
       <td class="py-2 pr-3">${priorityBadge(w.priority)}</td>
       <td class="py-2 pr-3">${statusBadge(w.executionStatus)}</td>
     </tr>`).join("") || `<tr><td colspan="7" class="py-4 text-center text-dim">No critical/high priority warrants</td></tr>`;
@@ -1220,7 +1246,7 @@ function renderMasterTable(){
       <td class="py-2 px-3 font-medium">${escapeHtml(w.nameOfPerson)}</td>
       <td class="py-2 px-3">${escapeHtml(w.currentProbableStateUT)}${isInterState(w) ? ' <span class="text-[10px] text-dim">(Inter-State)</span>' : ''}</td>
       <td class="py-2 px-3">${addrBadge(w.addressVerificationStatus)}</td>
-      <td class="py-2 px-3">${w.ageingDays}d<br/><span class="text-dim text-[10px]">${escapeHtml(w.ageingBucket)}</span></td>
+      <td class="py-2 px-3">${formatAgeing(w.ageingDays)}<br/><span class="text-dim text-[10px]">${escapeHtml(w.ageingBucket)}</span></td>
       <td class="py-2 px-3">${statusBadge(w.executionStatus)}</td>
       <td class="py-2 px-3">${escapeHtml(w.teamAssigned)||'<span class="text-dim">—</span>'}</td>
       <td class="py-2 px-3">${auditBadge(w)}</td>
