@@ -177,6 +177,10 @@
           <option value="recent_desc">Sort: Recently Updated First</option>
           <option value="recent_asc">Sort: Least Recently Updated First</option>
         </select>
+        <span id="districtFilterChip" class="hidden badge surface-2 items-center gap-1.5">
+          <i data-lucide="map-pin" class="w-3 h-3"></i>District: <strong id="districtFilterLabel"></strong>
+          <button id="clearDistrictFilter" class="ml-1 opacity-70 hover:opacity-100" title="Clear district filter">✕</button>
+        </span>
         <button id="clearFilters" class="px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80">Clear</button>
       </div>
 
@@ -955,7 +959,7 @@ async function updateWarrantFields(id, fields){
    4. UI STATE
    --------------------------------------------------------------------- */
 let currentTab = "dashboard";
-let filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"" };
+let filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"", district:"" };
 let page = 1;
 let pageSizeSetting = "25"; // "25" | "50" | "100" | "200" | "all"
 let charts = {};
@@ -1021,6 +1025,7 @@ function filteredWarrants(){
     }
     if (filters.unit && w.policeUnit !== filters.unit) return false;
     if (filters.state && w.currentProbableStateUT !== filters.state) return false;
+    if (filters.district && w.currentProbableDistrict !== filters.district) return false;
     if (filters.addrStatus && w.addressVerificationStatus !== filters.addrStatus) return false;
     if (filters.execStatus && w.executionStatus !== filters.execStatus) return false;
     if (filters.priority && w.priority !== filters.priority) return false;
@@ -1281,13 +1286,35 @@ function renderClusters(){
     return;
   }
 
+  // NOTE: executionStatus values are "NBWs Executed" / "NBWs yet to Entrust" /
+  // etc (see OPTS.executionStatus) -- comparing against the bare string
+  // "Executed" never matched anything, so "Executed"/"Ready for Team" counts
+  // here were silently always 0/undercounted. Fixed below.
   document.getElementById("clusterGrid").innerHTML = entries.map(([state, list]) => {
     const verified = list.filter(isVerified).length;
-    const ready = list.filter(w => isVerified(w) && w.executionStatus !== "Executed").length;
-    const executed = list.filter(w => w.executionStatus === "Executed").length;
+    const ready = list.filter(w => isVerified(w) && w.executionStatus !== "NBWs Executed").length;
+    const executed = list.filter(w => w.executionStatus === "NBWs Executed").length;
     const over5 = list.filter(w => w.ageingBucket==="5-10 Years"||w.ageingBucket===">10 Years").length;
     const over10 = list.filter(w => w.ageingBucket===">10 Years").length;
-    const districts = Array.from(new Set(list.map(w=>w.currentProbableDistrict).filter(Boolean)));
+
+    // District-wise breakdown within this state -- this is what tells HQ
+    // which specific district to send an execution team to first: sorted
+    // by "Ready for Team" (verified address, not yet executed) descending,
+    // so the most actionable district surfaces at the top of the list.
+    const byDistrict = {};
+    list.forEach(w => {
+      const d = w.currentProbableDistrict || "Unspecified";
+      (byDistrict[d] = byDistrict[d] || []).push(w);
+    });
+    const districtRows = Object.entries(byDistrict).map(([district, dlist]) => ({
+      district,
+      total: dlist.length,
+      verified: dlist.filter(isVerified).length,
+      ready: dlist.filter(w => isVerified(w) && w.executionStatus !== "NBWs Executed").length,
+      executed: dlist.filter(w => w.executionStatus === "NBWs Executed").length,
+      over5: dlist.filter(w => w.ageingBucket==="5-10 Years"||w.ageingBucket===">10 Years").length,
+    })).sort((a,b) => b.ready - a.ready || b.total - a.total);
+
     return `
     <div class="surface rounded-xl p-4">
       <div class="flex items-center justify-between mb-3">
@@ -1300,16 +1327,44 @@ function renderClusters(){
         <div class="surface-2 rounded-lg p-2"><div class="text-dim">Executed</div><div class="font-bold">${executed}</div></div>
         <div class="surface-2 rounded-lg p-2"><div class="text-dim">&gt;5yr / &gt;10yr</div><div class="font-bold">${over5} / ${over10}</div></div>
       </div>
-      <div class="text-xs text-dim mb-2">Districts: ${districts.slice(0,6).map(escapeHtml).join(", ") || "—"}${districts.length>6?` +${districts.length-6} more`:""}</div>
+      <div class="text-xs text-dim mb-1.5 flex items-center gap-1"><i data-lucide="map" class="w-3 h-3"></i>District-wise (sorted by Ready for Team):</div>
+      <div class="max-h-44 overflow-y-auto rounded-lg border border-c mb-3">
+        <table class="w-full text-[11px]">
+          <thead class="sticky top-0 surface-2"><tr class="text-left text-dim">
+            <th class="py-1 px-2">District</th><th class="py-1 px-2">Total</th><th class="py-1 px-2">Verified</th>
+            <th class="py-1 px-2">Ready</th><th class="py-1 px-2">Executed</th><th class="py-1 px-2"></th>
+          </tr></thead>
+          <tbody>
+            ${districtRows.map(d => `
+            <tr class="border-t border-c">
+              <td class="py-1 px-2 font-medium">${escapeHtml(d.district)}</td>
+              <td class="py-1 px-2">${d.total}</td>
+              <td class="py-1 px-2">${d.verified}</td>
+              <td class="py-1 px-2 ${d.ready>0 ? 'text-emerald-500 font-bold' : 'text-dim'}">${d.ready}</td>
+              <td class="py-1 px-2">${d.executed}</td>
+              <td class="py-1 px-2">
+                <button class="viewDistrictBtn text-[10px] font-semibold px-1.5 py-0.5 rounded border border-c surface hover:opacity-80" data-state="${escapeHtml(state)}" data-district="${escapeHtml(d.district)}">View</button>
+              </td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
       <button class="viewClusterBtn w-full text-xs font-semibold py-2 rounded-lg border border-c surface-2 hover:opacity-80" data-state="${escapeHtml(state)}">
-        View ${list.length} warrant${list.length!==1?'s':''} &rarr;
+        View all ${list.length} warrant${list.length!==1?'s':''} in this state &rarr;
       </button>
     </div>`;
   }).join("");
   lucide.createIcons();
 
   document.querySelectorAll(".viewClusterBtn").forEach(btn => btn.addEventListener("click", () => {
-    filters = { q:"", unit:"", state: btn.dataset.state, addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"" };
+    filters = { q:"", unit:"", state: btn.dataset.state, addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"", district:"" };
+    syncFilterInputsFromState();
+    switchTab("master");
+    renderMasterTable();
+  }));
+
+  document.querySelectorAll(".viewDistrictBtn").forEach(btn => btn.addEventListener("click", () => {
+    filters = { q:"", unit:"", state: btn.dataset.state, addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"", district: btn.dataset.district };
     syncFilterInputsFromState();
     switchTab("master");
     renderMasterTable();
@@ -1326,6 +1381,14 @@ function syncFilterInputsFromState(){
   document.getElementById("filterAgeing").value = filters.ageing;
   document.getElementById("sortMode").value = filters.sort;
   document.getElementById("pageSizeSelect").value = pageSizeSetting;
+
+  const chip = document.getElementById("districtFilterChip");
+  if (filters.district) {
+    document.getElementById("districtFilterLabel").textContent = `${filters.district}${filters.state ? ", " + filters.state : ""}`;
+    chip.classList.remove("hidden"); chip.classList.add("flex");
+  } else {
+    chip.classList.add("hidden"); chip.classList.remove("flex");
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -1843,7 +1906,7 @@ function completeLogin(sessionData, officer){
   saveSession(sessionData);
   hideLoginOverlay();
   page = 1;
-  filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"" };
+  filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"", district:"" };
   pageSizeSetting = "25";
   syncFilterInputsFromState();
   renderSessionBadge();
@@ -2003,11 +2066,14 @@ function wireEvents(){
     document.getElementById(id).addEventListener("change", (e) => { filters[key] = e.target.value; page = 1; renderMasterTable(); });
   });
   document.getElementById("clearFilters").addEventListener("click", () => {
-    filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"" };
+    filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"", district:"" };
     syncFilterInputsFromState(); page = 1; renderMasterTable();
   });
   document.getElementById("pageSizeSelect").addEventListener("change", (e) => {
     pageSizeSetting = e.target.value; page = 1; renderMasterTable();
+  });
+  document.getElementById("clearDistrictFilter").addEventListener("click", () => {
+    filters.district = ""; syncFilterInputsFromState(); page = 1; renderMasterTable();
   });
   document.getElementById("prevPage").addEventListener("click", () => { if (page>1){ page--; renderMasterTable(); } });
   document.getElementById("nextPage").addEventListener("click", () => { page++; renderMasterTable(); });
