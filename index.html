@@ -172,6 +172,11 @@
         <select id="filterExecStatus" class="px-2 py-2 rounded-lg text-sm"><option value="">All Execution Status</option></select>
         <select id="filterPriority" class="px-2 py-2 rounded-lg text-sm"><option value="">All Priority</option></select>
         <select id="filterAgeing" class="px-2 py-2 rounded-lg text-sm"><option value="">All Ageing</option></select>
+        <select id="sortMode" class="px-2 py-2 rounded-lg text-sm">
+          <option value="">Sort: Default Order</option>
+          <option value="recent_desc">Sort: Recently Updated First</option>
+          <option value="recent_asc">Sort: Least Recently Updated First</option>
+        </select>
         <button id="clearFilters" class="px-3 py-2 rounded-lg text-xs font-semibold border border-c surface-2 hover:opacity-80">Clear</button>
       </div>
 
@@ -195,9 +200,17 @@
             <tbody id="masterTbody"></tbody>
           </table>
         </div>
-        <div class="flex items-center justify-between px-3 py-2.5 border-t border-c text-xs text-dim">
+        <div class="flex items-center justify-between px-3 py-2.5 border-t border-c text-xs text-dim flex-wrap gap-2">
           <span id="rowCountLabel">0 records</span>
           <div class="flex items-center gap-2">
+            <label for="pageSizeSelect" class="text-dim">Rows per page:</label>
+            <select id="pageSizeSelect" class="px-2 py-1 rounded border border-c surface-2 text-xs">
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+              <option value="all">All</option>
+            </select>
             <button id="prevPage" class="px-2 py-1 rounded border border-c surface-2">Prev</button>
             <span id="pageLabel">Page 1</span>
             <button id="nextPage" class="px-2 py-1 rounded border border-c surface-2">Next</button>
@@ -902,9 +915,9 @@ async function updateWarrantFields(id, fields){
    4. UI STATE
    --------------------------------------------------------------------- */
 let currentTab = "dashboard";
-let filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"" };
+let filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"" };
 let page = 1;
-const PAGE_SIZE = 25;
+let pageSizeSetting = "25"; // "25" | "50" | "100" | "200" | "all"
 let charts = {};
 let activeEditId = null;
 
@@ -960,7 +973,7 @@ function scopedWarrants(){
    --------------------------------------------------------------------- */
 function filteredWarrants(){
   const q = filters.q.trim().toLowerCase();
-  return scopedWarrants().filter(w => {
+  const rows = scopedWarrants().filter(w => {
     if (q) {
       const hay = [w.nameOfPerson, w.cctnsId, w.crimeNoYear, w.policeUnit, w.policeStation, w.courtCaseNo, w.warrantNo]
         .join(" ").toLowerCase();
@@ -974,6 +987,19 @@ function filteredWarrants(){
     if (filters.ageing && w.ageingBucket !== filters.ageing) return false;
     return true;
   });
+
+  // Sort by the "Last Updated (Audit)" timestamp -- records that have
+  // never been edited (no lastUpdatedAt) sort to the bottom either way.
+  if (filters.sort === "recent_desc" || filters.sort === "recent_asc") {
+    const dir = filters.sort === "recent_desc" ? -1 : 1;
+    rows.sort((a, b) => {
+      const ta = a.lastUpdatedAt ? new Date(a.lastUpdatedAt).getTime() : 0;
+      const tb = b.lastUpdatedAt ? new Date(b.lastUpdatedAt).getTime() : 0;
+      return (ta - tb) * dir;
+    });
+  }
+
+  return rows;
 }
 
 /* ---------------------------------------------------------------------
@@ -1162,10 +1188,11 @@ function populateFilterOptions(){
 
 function renderMasterTable(){
   const rows = filteredWarrants();
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const pageSize = pageSizeSetting === "all" ? Math.max(rows.length, 1) : Number(pageSizeSetting);
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   page = Math.min(page, totalPages);
-  const start = (page-1)*PAGE_SIZE;
-  const pageRows = rows.slice(start, start+PAGE_SIZE);
+  const start = (page-1)*pageSize;
+  const pageRows = rows.slice(start, start+pageSize);
 
   document.getElementById("masterTbody").innerHTML = pageRows.map(w => `
     <tr class="border-t border-c hover:bg-black/5 dark:hover:bg-white/5">
@@ -1188,7 +1215,7 @@ function renderMasterTable(){
     </tr>`).join("") || `<tr><td colspan="12" class="py-8 text-center text-dim">No records match the current filters.</td></tr>`;
 
   document.getElementById("rowCountLabel").textContent = `${rows.length} record${rows.length!==1?'s':''} (of ${WARRANTS.length} total)`;
-  document.getElementById("pageLabel").textContent = `Page ${page} of ${totalPages}`;
+  document.getElementById("pageLabel").textContent = pageSizeSetting === "all" ? `All ${rows.length} row${rows.length!==1?'s':''}` : `Page ${page} of ${totalPages}`;
   lucide.createIcons();
 
   document.querySelectorAll(".editBtn").forEach(btn => btn.addEventListener("click", () => openEditModal(btn.dataset.id)));
@@ -1239,7 +1266,7 @@ function renderClusters(){
   lucide.createIcons();
 
   document.querySelectorAll(".viewClusterBtn").forEach(btn => btn.addEventListener("click", () => {
-    filters = { q:"", unit:"", state: btn.dataset.state, addrStatus:"", execStatus:"", priority:"", ageing:"" };
+    filters = { q:"", unit:"", state: btn.dataset.state, addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"" };
     syncFilterInputsFromState();
     switchTab("master");
     renderMasterTable();
@@ -1254,6 +1281,8 @@ function syncFilterInputsFromState(){
   document.getElementById("filterExecStatus").value = filters.execStatus;
   document.getElementById("filterPriority").value = filters.priority;
   document.getElementById("filterAgeing").value = filters.ageing;
+  document.getElementById("sortMode").value = filters.sort;
+  document.getElementById("pageSizeSelect").value = pageSizeSetting;
 }
 
 /* ---------------------------------------------------------------------
@@ -1771,7 +1800,8 @@ function completeLogin(sessionData, officer){
   saveSession(sessionData);
   hideLoginOverlay();
   page = 1;
-  filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"" };
+  filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"" };
+  pageSizeSetting = "25";
   syncFilterInputsFromState();
   renderSessionBadge();
   if (!DEMO_MODE) {
@@ -1924,13 +1954,17 @@ function wireEvents(){
     searchTimer = setTimeout(() => { filters.q = e.target.value; page = 1; renderMasterTable(); }, 220);
   });
   [["filterUnit","unit"],["filterState","state"],["filterAddrStatus","addrStatus"],
-   ["filterExecStatus","execStatus"],["filterPriority","priority"],["filterAgeing","ageing"]
+   ["filterExecStatus","execStatus"],["filterPriority","priority"],["filterAgeing","ageing"],
+   ["sortMode","sort"]
   ].forEach(([id,key]) => {
     document.getElementById(id).addEventListener("change", (e) => { filters[key] = e.target.value; page = 1; renderMasterTable(); });
   });
   document.getElementById("clearFilters").addEventListener("click", () => {
-    filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"" };
+    filters = { q:"", unit:"", state:"", addrStatus:"", execStatus:"", priority:"", ageing:"", sort:"" };
     syncFilterInputsFromState(); page = 1; renderMasterTable();
+  });
+  document.getElementById("pageSizeSelect").addEventListener("change", (e) => {
+    pageSizeSetting = e.target.value; page = 1; renderMasterTable();
   });
   document.getElementById("prevPage").addEventListener("click", () => { if (page>1){ page--; renderMasterTable(); } });
   document.getElementById("nextPage").addEventListener("click", () => { page++; renderMasterTable(); });
