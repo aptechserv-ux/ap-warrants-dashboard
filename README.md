@@ -116,3 +116,15 @@ Once Live Mode + real rules are in place, the "this is a client-side gate only" 
 The 16-character generated passwords from `create_officer_accounts.js` are secure but not meant to be memorized day-to-day. Once signed in, click **Change Password** in the header to set a memorable one for your unit (at least 8 characters, with an uppercase letter, a lowercase letter, a number, and a symbol — a passphrase like `Chittoor@Warrants2026` is fine). This changes the real Firebase Auth password for that unit's shared account; re-share the new password with your unit's officers the same way you shared the original one. "Username" (the login email, e.g. `chittoor@ap-warrants.local`) is fixed per unit by design, since that's what Firestore's rules match against — only the password is changeable.
 
 If a unit ever forgets its password entirely, re-run the provisioning script with `--reset-passwords` to generate (and print) a fresh one for every unit.
+
+## Firestore read usage (why "State HQ Admin" logins read so many documents)
+
+A **State HQ Admin** login subscribes to the *entire* `warrants` collection (every unit's records), unlike a field unit's login, which Firestore Security Rules scope down to just that unit's own records. With ~6,400 total warrant records, that means roughly 5,000-6,000 Firestore document reads are billed every time that subscription is freshly established -- i.e. every HQ Admin login, and every page refresh while logged in as HQ Admin.
+
+This is expected given how the app keeps every screen live-updating, not a bug -- but `index.html` now enables Firestore's **offline persistence** (`db.enablePersistence(...)`), which caches query results on-device (in the browser's IndexedDB) and lets the app resume its live subscription from where it left off on the next login or refresh, instead of re-reading every document from scratch. In practice this cuts most of the *repeat* reads from the same browser/device -- the first login of the day (or the first login on a new device, or after clearing browser data) still reads the full collection once, but subsequent refreshes that session should be far cheaper.
+
+Things worth knowing if read usage still looks high:
+- **Firestore's free (Spark) tier includes 50,000 document reads per day** across the whole project; a Blaze (pay-as-you-go) project keeps that same 50k/day free and only bills beyond it, at roughly $0.036 per 100,000 reads. A handful of HQ Admin logins a day comfortably fits in the free quota; dozens of logins across many admin sessions on different devices could add up.
+- Persistence only helps *repeat* visits from the *same* browser profile on the *same* device -- a different officer's laptop, a different browser, or an incognito window will still do a full read the first time.
+- If read usage is still a concern after this change, the next lever is giving up on *realtime* sync for the HQ Admin's full-collection view in favor of a one-time load plus a manual "Refresh" button -- this would cut reads further but means HQ Admin would no longer see other units' edits appear automatically without refreshing. Ask if you'd like this traded in.
+

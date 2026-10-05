@@ -508,6 +508,23 @@ if (!DEMO_MODE) {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
     auth = firebase.auth();
+    // Cache query results on-device (IndexedDB) so that re-opening the app
+    // (every login, every page refresh) resumes the realtime listener from
+    // where it left off instead of re-reading every document again -- this
+    // is what was driving ~5-6k billed Firestore reads on every single
+    // State HQ Admin login (an admin session subscribes to the *entire*
+    // warrants collection, unlike a field unit's scoped-down subscription).
+    // synchronizeTabs lets multiple tabs on the same browser share one
+    // cache instead of fighting over it.
+    db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+      if (err.code === "failed-precondition") {
+        console.warn("Firestore offline cache unavailable (already open in another incompatible tab) -- falling back to normal reads.");
+      } else if (err.code === "unimplemented") {
+        console.warn("Firestore offline cache not supported in this browser -- falling back to normal reads.");
+      } else {
+        console.warn("Firestore offline cache failed to enable:", err);
+      }
+    });
   } catch (e) {
     console.error("Firebase init failed, falling back to demo mode.", e);
   }
