@@ -31,6 +31,21 @@
  *
  * Re-running is safe: existing accounts are left alone (claims are
  * refreshed, password is NOT reset) unless you pass --reset-passwords.
+ *
+ * To add a login for a unit that doesn't have one yet, or to reset just
+ * ONE unit's password without touching anyone else's, pass --unit:
+ *   node scripts/create_officer_accounts.js ./service-account.json --unit="Chittoor"
+ *   node scripts/create_officer_accounts.js ./service-account.json --unit="Chittoor" --reset-passwords
+ *   node scripts/create_officer_accounts.js ./service-account.json --unit="HQ" --reset-passwords
+ * (--unit="HQ" targets the State HQ Admin account.) Match is
+ * case-insensitive; the script lists valid unit names if it doesn't
+ * recognize what you typed.
+ *
+ * A unit that isn't in the POLICE_UNITS list below (a brand-new unit,
+ * not one that already has a login) can't be targeted with --unit until
+ * it's added to that list in this file AND to the POLICE_UNITS array in
+ * index.html (which drives the login dropdown and jurisdiction scoping)
+ * -- ask your developer/this assistant to add it, then re-run.
  * --------------------------------------------------------------------
  */
 const crypto = require("crypto");
@@ -62,18 +77,32 @@ function genPassword() {
 async function main() {
   const keyPath = process.argv[2];
   const resetPasswords = process.argv.includes("--reset-passwords");
+  const unitArg = process.argv.find((a) => a.startsWith("--unit="));
+  const targetUnit = unitArg ? unitArg.slice("--unit=".length).trim() : null;
   if (!keyPath) {
-    console.error("Usage: node scripts/create_officer_accounts.js <service-account.json> [--reset-passwords]");
+    console.error('Usage: node scripts/create_officer_accounts.js <service-account.json> [--reset-passwords] [--unit="Unit Name"]');
     process.exit(1);
   }
 
   initializeApp({ credential: cert(require(path.resolve(keyPath))) });
   const auth = getAuth();
 
-  const accounts = [
+  let accounts = [
     { unit: HQ_UNIT_NAME, role: "hq_admin" },
     ...POLICE_UNITS.map((unit) => ({ unit, role: "field" })),
   ];
+
+  if (targetUnit) {
+    const wanted = targetUnit.toLowerCase();
+    const match = accounts.find(
+      (a) => a.unit.toLowerCase() === wanted || (wanted === "hq" && a.unit === HQ_UNIT_NAME)
+    );
+    if (!match) {
+      console.error(`No unit matching "${targetUnit}".\nValid values: HQ, ${POLICE_UNITS.join(", ")}`);
+      process.exit(1);
+    }
+    accounts = [match];
+  }
 
   const results = [];
 

@@ -74,6 +74,7 @@ Login in this app has two modes:
    ```
    This creates (or, on re-run, just refreshes the claims on) one Firebase Auth account per Police Unit plus one for `IGP Technical Services HQ`, each with a freshly generated 16-character password, and prints a table of unit → login email → password **once**. Save that output somewhere safe (a password manager — not this repo) and distribute each unit's credential to that unit's officers through your normal secure channel.
    - Re-run anytime to add units or refresh claims; existing passwords are left alone unless you pass `--reset-passwords`.
+   - **To reset just one unit's password** (e.g. an SP forgot it) without touching anyone else's: `node scripts/create_officer_accounts.js ./service-account.json --unit="Chittoor" --reset-passwords` (use `--unit="HQ"` for the State HQ Admin account). Drop `--reset-passwords` and the same `--unit=` command creates that one login if it doesn't exist yet, without affecting any other unit.
 4. **Replace the Firestore rules** (Console → Firestore Database → Rules) with:
    ```
    rules_version = '2';
