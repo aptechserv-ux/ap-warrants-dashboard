@@ -337,11 +337,16 @@
       </form>
     </div>
 
-    <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-c sticky bottom-0 surface">
-      <button id="cancelEdit" class="px-4 py-2 rounded-lg text-sm font-semibold border border-c surface-2">Cancel</button>
-      <button id="saveEdit" class="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style="background:var(--accent)">
-        <i data-lucide="save" class="w-4 h-4"></i> Save to Database
+    <div class="flex items-center justify-between gap-2 px-5 py-4 border-t border-c sticky bottom-0 surface">
+      <button id="deleteWarrantBtn" class="hidden px-4 py-2 rounded-lg text-sm font-semibold border border-rose-500 text-rose-500 hover:bg-rose-500/10 items-center gap-2">
+        <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
       </button>
+      <div class="flex items-center gap-2 ml-auto">
+        <button id="cancelEdit" class="px-4 py-2 rounded-lg text-sm font-semibold border border-c surface-2">Cancel</button>
+        <button id="saveEdit" class="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style="background:var(--accent)">
+          <i data-lucide="save" class="w-4 h-4"></i> Save to Database
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -1463,6 +1468,11 @@ function openEditModal(id){
   });
   document.getElementById("f_remarks").value = w.remarks || "";
 
+  // Only State HQ Admin can delete a record -- matches the Firestore rule.
+  const delBtn = document.getElementById("deleteWarrantBtn");
+  delBtn.classList.toggle("hidden", !isAdminSession());
+  delBtn.classList.toggle("flex", isAdminSession());
+
   document.getElementById("editModal").classList.remove("hidden");
 }
 
@@ -1505,6 +1515,31 @@ async function saveEdit(){
     toast("Failed to save: " + e.message, "error");
   } finally {
     btn.disabled = false; btn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i> Save to Database`; lucide.createIcons();
+  }
+}
+
+async function handleDeleteWarrant(){
+  if (!activeEditId) return;
+  if (!isAdminSession()) {
+    toast("Only State HQ Admin can delete a warrant record.", "error");
+    return;
+  }
+  const target = WARRANTS.find(r => r.id === activeEditId);
+  const label = target ? (target.nameOfPerson || target.cctnsId || target.tempId || activeEditId) : activeEditId;
+  const ok = confirm(`Permanently delete this warrant record (${label})?\n\nThis cannot be undone -- use this to remove a duplicate, not to close out a resolved case.`);
+  if (!ok) return;
+
+  const btn = document.getElementById("deleteWarrantBtn");
+  btn.disabled = true; btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Deleting…`; lucide.createIcons();
+  try {
+    await deleteWarrantRecord(activeEditId);
+    toast("Warrant record deleted.");
+    closeEditModal();
+  } catch (e) {
+    console.error(e);
+    toast("Failed to delete: " + e.message, "error");
+  } finally {
+    btn.disabled = false; btn.innerHTML = `<i data-lucide="trash-2" class="w-4 h-4"></i> Delete`; lucide.createIcons();
   }
 }
 
@@ -1639,6 +1674,22 @@ async function addWarrantRecord(id, fields){
   }
   // A plain create (not merge) -- this ID has never been used before.
   await db.collection(COLLECTION_NAME).doc(id).set(fields);
+}
+
+// Permanently removes a warrant record -- used to clean up duplicates
+// (e.g. a unit used "Add Warrant" for a case that was already in the
+// CCTNS export or already logged by someone else). Firestore Security
+// Rules restrict the actual delete to State HQ Admin; the "Delete"
+// button in the Update Warrant modal is likewise only shown to admin.
+async function deleteWarrantRecord(id){
+  if (DEMO_MODE || !db) {
+    const all = LocalStore.all().filter(r => r.id !== id);
+    LocalStore.save(all);
+    WARRANTS = all.map(r => normalizeRecord(r.id, r));
+    renderAll();
+    return;
+  }
+  await db.collection(COLLECTION_NAME).doc(id).delete();
 }
 
 async function handleAddWarrantSubmit(){
@@ -2081,6 +2132,7 @@ function wireEvents(){
   document.getElementById("closeModal").addEventListener("click", closeEditModal);
   document.getElementById("cancelEdit").addEventListener("click", closeEditModal);
   document.getElementById("saveEdit").addEventListener("click", saveEdit);
+  document.getElementById("deleteWarrantBtn").addEventListener("click", handleDeleteWarrant);
   document.getElementById("editModal").addEventListener("click", (e) => { if (e.target.id === "editModal") closeEditModal(); });
 
   document.getElementById("loginForm").addEventListener("submit", handleLoginSubmit);
